@@ -591,6 +591,7 @@ def sync_post_header_selection(shared_key, widget_key):
 
 
 
+
 # --- Plan-specific PPT config ---
 PPT_CONFIGS = {
     "term plan": {
@@ -653,11 +654,11 @@ PPT_CONFIGS = {
             "Regular Pay": (9, 17),
         },
         "entry_age": {
-            "Single Pay": (18, 65),
-            "Limited Pay (5 pay)": (18, 65),
-            "Limited Pay (10 pay)": (18, 65),
-            "Limited Pay (15 pay)": (18, 65),
-            "Limited Pay (Pay till age 60)": (18, 55),
+            # "Single Pay": (18, 65),
+            # "Limited Pay (5 pay)": (18, 65),
+            # "Limited Pay (10 pay)": (18, 65),
+            # "Limited Pay (15 pay)": (18, 65),
+            # "Limited Pay (Pay till age 60)": (18, 55),
             "Regular Pay": (18, 65),
         },
         "MaximumEntryAgePlanOption1": {
