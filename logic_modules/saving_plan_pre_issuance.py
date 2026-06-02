@@ -54,10 +54,21 @@ PLAN_OPTION_MAX_MATURITY_AGE = {
     'CareerStart Life Shield Income': 62,
 }
 
-def get_entry_age_range_for_plan_option(plan_option):
+def get_entry_age_range_for_plan_option(plan_option, ppt_name="Regular Pay"):
+    # Prefer values defined inside PPT_RULES under plan_options if present
+    ppt = PPT_RULES.get(ppt_name, {})
+    plan_opts = ppt.get('plan_options', {}) if isinstance(ppt, dict) else {}
+    if plan_option in plan_opts and isinstance(plan_opts[plan_option], dict):
+        return tuple(plan_opts[plan_option].get('entry_age_range', (MIN_ENTRY_AGE, MAX_ENTRY_AGE)))
+    # Fallback to legacy constant mapping
     return MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE.get(plan_option, MAX_ENTRY_AGE)
 
-def get_maturity_age_range_for_plan_option(plan_option):
+
+def get_maturity_age_range_for_plan_option(plan_option, ppt_name="Regular Pay"):
+    ppt = PPT_RULES.get(ppt_name, {})
+    plan_opts = ppt.get('plan_options', {}) if isinstance(ppt, dict) else {}
+    if plan_option in plan_opts and isinstance(plan_opts[plan_option], dict):
+        return tuple(plan_opts[plan_option].get('maturity_age_range', (27, 62)))
     return 27, PLAN_OPTION_MAX_MATURITY_AGE.get(plan_option, 62)
 
 CHILD_AGE_RANGE = (0, 21)
@@ -185,6 +196,24 @@ PPT_RULES = {
         "coverage_year_range": lambda age: (5, 85 - age),
         "maturity_year": lambda age, coverage_year: age + coverage_year,
         "maturity_age_range": (27, 67),
+        "plan_options": {
+            'CareerStart Income': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Income']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Income'])
+            },
+            'CareerStart Health Shield Income': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Health Shield Income']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Health Shield Income'])
+            },
+            'CareerStart Secure Income': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Secure Income']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Secure Income'])
+            },
+            'CareerStart Life Shield Income': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Life Shield Income']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Life Shield Income'])
+            },
+        },
     },
 }
 
@@ -287,8 +316,16 @@ def make_constant_coverage_func(range_tuple):
 
 def apply_entry_age_overrides(epic_counts_local):
     entry_conf = epic_counts_local.get('EntryAge', {})
+    plan_option = entry_conf.get('plan_option')
     for ppt_name, (min_age, max_age) in entry_conf.get('ppt_age_ranges', {}).items():
-        if ppt_name in PPT_RULES:
+        if ppt_name not in PPT_RULES:
+            continue
+        if plan_option:
+            ppt = PPT_RULES[ppt_name]
+            ppt.setdefault('plan_options', {})
+            ppt['plan_options'].setdefault(plan_option, {})
+            ppt['plan_options'][plan_option]['entry_age_range'] = (min_age, max_age)
+        else:
             PPT_RULES[ppt_name]['entry_age_range'] = (min_age, max_age)
 
 
@@ -301,8 +338,16 @@ def apply_policy_term_overrides(epic_counts_local):
 
 def apply_maturity_age_overrides(epic_counts_local):
     maturity_conf = epic_counts_local.get('MaturityAge', {})
+    plan_option = maturity_conf.get('plan_option')
     for ppt_name, (min_mat, max_mat) in maturity_conf.get('ppt_age_ranges', {}).items():
-        if ppt_name in PPT_RULES:
+        if ppt_name not in PPT_RULES:
+            continue
+        if plan_option:
+            ppt = PPT_RULES[ppt_name]
+            ppt.setdefault('plan_options', {})
+            ppt['plan_options'].setdefault(plan_option, {})
+            ppt['plan_options'][plan_option]['maturity_age_range'] = (min_mat, max_mat)
+        else:
             PPT_RULES[ppt_name]['maturity_age_range'] = (min_mat, max_mat)
 
 
@@ -527,19 +572,16 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         ppt_pos_counts = entry_age_config.get('ppt_pos_counts', {})
         ppt_neg_counts = entry_age_config.get('ppt_neg_counts', {})
 
+        plan_option = entry_age_config.get('plan_option') or PLAN_OPTIONS[0]
+        plan_min_age, plan_max_age = get_entry_age_range_for_plan_option(plan_option)
+
         entryage_ppt_rules = PPT_RULES
         # If any PPT has a nonzero pos/neg count, treat as per-PPT mode
         per_ppt_mode = any(int(ppt_pos_counts.get(ppt, 0)) > 0 or int(ppt_neg_counts.get(ppt, 0)) > 0 for ppt in PPT_NAME) # for different count mode
         ppt_enabled = entry_age_config.get('ppt_enabled', {}) # for same count mode
         # if ppt_age_ranges and per_ppt_mode:
         for ppt_name in PPT_NAME:
-            plan_option = random.choice(PLAN_OPTIONS)
-            plan_min_age, plan_max_age = get_entry_age_range_for_plan_option(plan_option)
-            config_min_age, config_max_age = ppt_age_ranges.get(ppt_name, (None, None))
-            min_entry_age = max(config_min_age, plan_min_age) if config_min_age is not None else plan_min_age
-            max_entry_age = min(config_max_age, plan_max_age) if config_max_age is not None else plan_max_age
-            if min_entry_age > max_entry_age:
-                min_entry_age, max_entry_age = plan_min_age, plan_max_age
+            min_entry_age, max_entry_age = plan_min_age, plan_max_age
             if per_ppt_mode:
                 pos_count = int(ppt_pos_counts.get(ppt_name, 0))
                 neg_count = int(ppt_neg_counts.get(ppt_name, 0))
@@ -749,6 +791,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         ppt_pos_counts = maturity_age_config.get('ppt_pos_counts', {})
         ppt_neg_counts = maturity_age_config.get('ppt_neg_counts', {})
 
+        plan_option = maturity_age_config.get('plan_option') or PLAN_OPTIONS[0]
+        plan_min_entry_age, plan_max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+        plan_min_maturity_age, plan_max_maturity_age = get_maturity_age_range_for_plan_option(plan_option)
+
         # If any PPT has a nonzero pos/neg count, treat as per-PPT mode
         per_ppt_mode = any(int(ppt_pos_counts.get(ppt, 0)) > 0 or int(ppt_neg_counts.get(ppt, 0)) > 0 for ppt in PPT_NAME) # for different count mode
         ppt_enabled = maturity_age_config.get('ppt_enabled', {}) # for same count mode
@@ -767,10 +813,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             for i in range(pos_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                rule = PPT_RULES.get(ppt_name)
-                min_entry_age, max_entry_age = rule['entry_age_range']
-                age = random.randint(min_entry_age, max_entry_age)
-                min_maturity_age, max_maturity_age = rule['maturity_age_range']
+                age = random.randint(plan_min_entry_age, plan_max_entry_age)
+                min_maturity_age, max_maturity_age = plan_min_maturity_age, plan_max_maturity_age
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
                 discount_info = calculate_discounts(ppt_name)
@@ -808,11 +852,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             for i in range(neg_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                rule = PPT_RULES.get(ppt_name)
-                min_entry_age, max_entry_age = rule['entry_age_range']
-                age = random.randint(min_entry_age, max_entry_age)
+                age = random.randint(plan_min_entry_age, plan_max_entry_age)
                 deferment_period = build_deferment_period(valid=True)
-                charge_year, coverage_year, maturity_year, min_maturity_age, max_maturity_age = get_out_of_range_maturity_year(ppt_name, age, deferment_period=deferment_period)
+                charge_year, coverage_year, maturity_year, min_maturity_age, max_maturity_age = get_out_of_range_maturity_year_for_range(
+                    ppt_name,
+                    age,
+                    plan_min_maturity_age,
+                    plan_max_maturity_age,
+                    deferment_period=deferment_period,
+                )
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
                 common_row = build_common_row(
