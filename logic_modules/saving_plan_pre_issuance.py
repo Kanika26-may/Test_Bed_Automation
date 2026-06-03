@@ -100,6 +100,7 @@ PPT_NAME = ["Regular Pay"]
 EPIC_MAP = {
     'PolicyTerm': 'Check for Policy Term',
     'EntryAge': 'Check for Minimum entry age for Life assured',
+    'MinimumEntryAge': 'Check for Minimum entry age for Life assured for all plan options',
     'MaximumEntryAgePlanOption1': 'Check for Maximum entry age for Life assured for plan option 1',
     'MaximumEntryAgePlanOption2': 'Check for Maximum entry age for Life assured for plan option 2',
     'MaximumEntryAgePlanOption3': 'Check for Maximum entry age for Life assured for plan option 3',
