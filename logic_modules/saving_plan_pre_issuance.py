@@ -99,7 +99,7 @@ PPT_NAME = ["Regular Pay"]
 
 EPIC_MAP = {
     'PolicyTerm': 'Check for Policy Term',
-    'EntryAge': 'Check for Minimum entry age for Life assured',
+    # 'EntryAge': 'Check for Minimum entry age for Life assured',
     'MinimumEntryAge': 'Check for Minimum entry age for Life assured for all plan options',
     'MaximumEntryAgePlanOption1': 'Check for Maximum entry age for Life assured for plan option 1',
     'MaximumEntryAgePlanOption2': 'Check for Maximum entry age for Life assured for plan option 2',
@@ -147,7 +147,7 @@ def sum_assured_validation_message(ppt, min_sum=None, max_sum=None):
     return f"Min Base SA should not be less than {min_sum} for {ppt}"
 
 SCENARIO_MAP = {
-        'EntryAge': lambda ppt, min_entry_age, max_entry_age: f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {ppt}",
+        'MinimumEntryAge': lambda ppt, min_entry_age, max_entry_age: f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {ppt}",
         'PolicyTerm': lambda ppt, min_policy_term, max_policy_term: f"Policy term chosen should be between {min_policy_term} years to {max_policy_term} years for {ppt}",
         'MinimumMaturityAge': lambda ppt, min_maturity_age, max_maturity_age: f"The minimum maturity age of Life Assured should be between {min_maturity_age} to {max_maturity_age} years for {ppt}",
         'PaymentFrequency': f"To check for premium Frequency chosen should be Yearly, Half-Yearly, Quarterly & Monthly",
@@ -160,11 +160,7 @@ column_order = [
     "inceptionDate","current_date", "InceptionBackdays", "policyHolderLocation", "insurerLocation",
     "LABirthdate","Child Birthdate", "LAAge","ChildAge", "LAGender",  "ChildGender","smoking", "Medicalindi",
     "planOption","productCode", "coverageYear",  "chargeYear","Coverage upto Age","DefermentPeriod", "incomePeriod",
-    "advanceIncomeOption","chargePeriod","paymentFreq","payoutFrequency", "Advance Income", "ddaMandateIndi", "Distribution Channel",
-     "discountType", "Existing Customer", 
-    "IncomeShieldMonthlyInstalmentPeriod", "sumAssured", "autoDebit", "installPremium",
-    "BaseEMR_extraType", "BaseEMR_extraArith", "BaseEMR_extraPara", "BasePerMille_extraType", "BasePerMille_extraArith",
-    "BasePerMille_extraPara",  "Maturity age","Standard Age Proof"
+    "advanceIncomeOption","chargePeriod","paymentFreq","payoutFrequency", "Advance Income", "ddaMandateIndi", "Distribution Channel", "discountType", "Existing Customer", "IncomeShieldMonthlyInstalmentPeriod", "sumAssured", "autoDebit", "installPremium","BaseEMR_extraType", "BaseEMR_extraArith", "BaseEMR_extraPara", "BasePerMille_extraType", "BasePerMille_extraArith", "BasePerMille_extraPara",  "Maturity age","Standard Age Proof"
 ]
 
 
@@ -566,8 +562,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 'proDifference_Value': ''}
     
     # --- EPIC: EntryAge ---
-    if 'EntryAge' in selected_epics:
-        target_rule = 'EntryAge'
+    if 'MinimumEntryAge' in selected_epics:
+        target_rule = 'MinimumEntryAge'
         entry_age_config = epic_counts.get(target_rule, {})
         ppt_age_ranges = entry_age_config.get('ppt_age_ranges', {})
         ppt_pos_counts = entry_age_config.get('ppt_pos_counts', {})
@@ -784,8 +780,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 scenarios.append({**common_data, **common_row})
 
     # --- EPIC: MaturityAge ---
-    if 'MaturityAge' in selected_epics:
-        target_rule = 'MaturityAge'
+    if 'MinimumMaturityAge' in selected_epics:
+        target_rule = 'MinimumMaturityAge'
         # counts = epic_counts.get(target_rule, {'positive': 0, 'negative': 0})
         maturity_age_config = epic_counts.get(target_rule, {})
         ppt_age_ranges = maturity_age_config.get('ppt_age_ranges', {})
@@ -2648,14 +2644,14 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for ppt_name in PPT_NAME:
             rule = PPT_RULES.get(ppt_name)
             min_entry_age, max_entry_age = rule['entry_age_range']
-            if per_ppt_mode:
-                pos_count = int(ppt_pos_counts.get(ppt_name, 0))
-                neg_count = int(ppt_neg_counts.get(ppt_name, 0))
-            elif ppt_enabled.get(ppt_name, False):
-                pos_count = epic_counts.get(target_rule, {}).get('positive', 0)
-                neg_count = epic_counts.get(target_rule, {}).get('negative', 0)
-            else:
-                continue
+            # if per_ppt_mode:
+            #     pos_count = int(ppt_pos_counts.get(ppt_name, 0))
+            #     neg_count = int(ppt_neg_counts.get(ppt_name, 0))
+            # elif ppt_enabled.get(ppt_name, False):
+            pos_count = epic_counts.get(target_rule, {}).get('positive', 0)
+            neg_count = epic_counts.get(target_rule, {}).get('negative', 0)
+            # else:
+            #     continue
             
             # Prepare scenario message based on PPT type
             min_ppt, max_ppt = premium_paying_ppt_rules[ppt_name]['charge_year_range']

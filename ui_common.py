@@ -1961,7 +1961,7 @@ def render_base_plan_epics(
                         "ChildEntryAge"
                     ]:  
                         ppt_age_ranges, ppt_enabled = {}, {}
-                        row = st.columns([0.5, 2])
+                        row = st.columns([0.8, 2])
                         with row[0]:
                             is_selected = st.checkbox(
                                 epic_desc,
@@ -2034,7 +2034,7 @@ def render_base_plan_epics(
                         "BandhanLifeEmployee",
                     ]:
                         ppt_age_ranges, ppt_enabled = {}, {}
-                        row = st.columns([0.5, 2])
+                        row = st.columns([0.8, 2])
                         with row[0]:
                             is_selected = st.checkbox(
                                 epic_desc,
@@ -2046,7 +2046,7 @@ def render_base_plan_epics(
                                 age_val = st.slider(
                                     "Min Entry Age",
                                     0,
-                                    100,
+                                    80,
                                     min_entry_age_val,
                                     key=lifecycle_key(
                                         lifecycle_key_prefix,
