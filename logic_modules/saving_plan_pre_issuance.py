@@ -106,7 +106,7 @@ EPIC_MAP = {
     'MaximumEntryAgePlanOption3': 'Check for Maximum entry age for Life assured for plan option 3',
     'MaximumEntryAgePlanOption4': 'Check for Maximum entry age for Life assured for plan option 4',
     'ChildEntryAge': 'Check for Minimum - Maximum entry age for Child',
-    'MaturityAge': 'Check for Minimum Maturity age for Life assured',
+    'MinimumMaturityAge': 'Check for Minimum Maturity age for Life assured',
     'MaximumMaturityAgePlanOption1': 'Check for Maximum Maturity age for Life assured for plan option 1',
     'MaximumMaturityAgePlanOption2': 'Check for Maximum Maturity age for Life assured for plan option 2',
     'MaximumMaturityAgePlanOption3': 'Check for Maximum Maturity age for Life assured for plan option 3',
@@ -149,7 +149,7 @@ def sum_assured_validation_message(ppt, min_sum=None, max_sum=None):
 SCENARIO_MAP = {
         'EntryAge': lambda ppt, min_entry_age, max_entry_age: f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {ppt}",
         'PolicyTerm': lambda ppt, min_policy_term, max_policy_term: f"Policy term chosen should be between {min_policy_term} years to {max_policy_term} years for {ppt}",
-        'MaturityAge': lambda ppt, min_maturity_age, max_maturity_age: f"The maturity age of Life Assured should be between {min_maturity_age} to {max_maturity_age} years for {ppt}",
+        'MinimumMaturityAge': lambda ppt, min_maturity_age, max_maturity_age: f"The minimum maturity age of Life Assured should be between {min_maturity_age} to {max_maturity_age} years for {ppt}",
         'PaymentFrequency': f"To check for premium Frequency chosen should be Yearly, Half-Yearly, Quarterly & Monthly",
         'PremiumPayingTerm': premium_paying_term_message,
         'SumAssuredValidation': sum_assured_validation_message,
