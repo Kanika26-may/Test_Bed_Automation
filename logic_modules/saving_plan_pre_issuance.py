@@ -196,7 +196,7 @@ PPT_RULES = {
         "charge_year_range": (5, 67),
         "coverage_year_range": lambda age: (5, 85 - age),
         "maturity_year": lambda age, coverage_year: age + coverage_year,
-        "maturity_age_range": (27, 67),
+        "maturity_age_range": (27, 67),        
         "plan_options": {
             'CareerStart Income': {
                 'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Income']),
