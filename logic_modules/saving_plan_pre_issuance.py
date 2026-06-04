@@ -401,15 +401,128 @@ def apply_sum_assured_overrides(epic_counts_local):
         PPT_RULES_TT2["Regular Pay"] = (min_sa, max_sa)
 
 
+def _read_single_val(raw):
+    """Extract an int from a single value or the min/max of a range tuple."""
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    if isinstance(raw, (list, tuple)) and len(raw) >= 1:
+        return int(raw[0])
+    return None
+
+
+def apply_min_entry_age_overrides(epic_counts_local):
+    """Sync MinimumEntryAge UI value → PPT_RULES plan_options entry_age_range min."""
+    raw = epic_counts_local.get('MinimumEntryAge', {}).get('ppt_age_ranges', {}).get('Regular Pay')
+    min_age = _read_single_val(raw)
+    if min_age is None:
+        return
+    ppt = PPT_RULES.get('Regular Pay', {})
+    # Update global entry_age_range min
+    cur_min, cur_max = ppt.get('entry_age_range', (MIN_ENTRY_AGE, MAX_ENTRY_AGE))
+    PPT_RULES['Regular Pay']['entry_age_range'] = (min_age, cur_max)
+    # Update each plan option's entry_age_range min
+    for opt_name, opt_data in ppt.get('plan_options', {}).items():
+        o_min, o_max = opt_data.get('entry_age_range', (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE.get(opt_name, MAX_ENTRY_AGE)))
+        opt_data['entry_age_range'] = (min_age, o_max)
+
+
+def apply_max_entry_age_overrides(epic_counts_local):
+    """Sync MaximumEntryAgePlanOptionX UI values → PPT_RULES plan_options entry_age_range max."""
+    plan_epic_map = {
+        'MaximumEntryAgePlanOption1': 'CareerStart Income',
+        'MaximumEntryAgePlanOption2': 'CareerStart Health Shield Income',
+        'MaximumEntryAgePlanOption3': 'CareerStart Secure Income',
+        'MaximumEntryAgePlanOption4': 'CareerStart Life Shield Income',
+    }
+    ppt = PPT_RULES.get('Regular Pay', {})
+    plan_opts = ppt.setdefault('plan_options', {})
+    for epic_key, plan_name in plan_epic_map.items():
+        raw = epic_counts_local.get(epic_key, {}).get('ppt_age_ranges', {}).get('Regular Pay')
+        if raw is None:
+            continue
+        max_age = int(raw) if isinstance(raw, (int, float)) else (int(raw[1]) if isinstance(raw, (list, tuple)) and len(raw) >= 2 else None)
+        if max_age is None:
+            continue
+        plan_opts.setdefault(plan_name, {})
+        o_min, _ = plan_opts[plan_name].get('entry_age_range', (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE.get(plan_name, MAX_ENTRY_AGE)))
+        plan_opts[plan_name]['entry_age_range'] = (o_min, max_age)
+        PLAN_OPTION_MAX_ENTRY_AGE[plan_name] = max_age
+
+
+def apply_min_maturity_age_overrides(epic_counts_local):
+    """Sync MinimumMaturityAge UI value → PPT_RULES plan_options maturity_age_range min."""
+    raw = epic_counts_local.get('MinimumMaturityAge', {}).get('ppt_age_ranges', {}).get('Regular Pay')
+    min_mat = _read_single_val(raw)
+    if min_mat is None:
+        return
+    ppt = PPT_RULES.get('Regular Pay', {})
+    cur_min, cur_max = ppt.get('maturity_age_range', (27, 67))
+    PPT_RULES['Regular Pay']['maturity_age_range'] = (min_mat, cur_max)
+    for opt_name, opt_data in ppt.get('plan_options', {}).items():
+        o_min, o_max = opt_data.get('maturity_age_range', (27, PLAN_OPTION_MAX_MATURITY_AGE.get(opt_name, 67)))
+        opt_data['maturity_age_range'] = (min_mat, o_max)
+
+
+def apply_max_maturity_age_overrides(epic_counts_local):
+    """Sync MaximumMaturityAgePlanOptionX UI values → PPT_RULES plan_options maturity_age_range max."""
+    plan_epic_map = {
+        'MaximumMaturityAgePlanOption1': 'CareerStart Income',
+        'MaximumMaturityAgePlanOption2': 'CareerStart Health Shield Income',
+        'MaximumMaturityAgePlanOption3': 'CareerStart Secure Income',
+        'MaximumMaturityAgePlanOption4': 'CareerStart Life Shield Income',
+    }
+    ppt = PPT_RULES.get('Regular Pay', {})
+    plan_opts = ppt.setdefault('plan_options', {})
+    for epic_key, plan_name in plan_epic_map.items():
+        raw = epic_counts_local.get(epic_key, {}).get('ppt_age_ranges', {}).get('Regular Pay')
+        if raw is None:
+            continue
+        max_mat = int(raw) if isinstance(raw, (int, float)) else (int(raw[1]) if isinstance(raw, (list, tuple)) and len(raw) >= 2 else None)
+        if max_mat is None:
+            continue
+        plan_opts.setdefault(plan_name, {})
+        o_min, _ = plan_opts[plan_name].get('maturity_age_range', (27, PLAN_OPTION_MAX_MATURITY_AGE.get(plan_name, 67)))
+        plan_opts[plan_name]['maturity_age_range'] = (o_min, max_mat)
+        PLAN_OPTION_MAX_MATURITY_AGE[plan_name] = max_mat
+
+
+def apply_deferment_period_overrides(epic_counts_local):
+    """Sync DefermentPeriod UI range → global DEFERMENT_PERIOD_RANGE."""
+    global DEFERMENT_PERIOD_RANGE
+    raw = epic_counts_local.get('DefermentPeriod', {}).get('ppt_age_ranges', {}).get('Regular Pay')
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        DEFERMENT_PERIOD_RANGE = (int(raw[0]), int(raw[1]))
+
+
+def apply_child_entry_age_overrides(epic_counts_local):
+    """Sync ChildEntryAge UI range → global CHILD_AGE_RANGE."""
+    global CHILD_AGE_RANGE
+    raw = epic_counts_local.get('ChildEntryAge', {}).get('ppt_age_ranges', {}).get('Regular Pay')
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        inner = raw[0]
+        if isinstance(inner, (list, tuple)) and len(inner) == 2:
+            CHILD_AGE_RANGE = (int(inner[0]), int(inner[1]))
+        else:
+            CHILD_AGE_RANGE = (int(raw[0]), int(raw[1]))
+    elif isinstance(raw, (int, float)):
+        CHILD_AGE_RANGE = (0, int(raw))
+
+
 def update_ppt_rules_with_epic_counts(epic_counts_local, epic_counts_rider_local=None):
     if not epic_counts_local:
         return
 
     apply_entry_age_overrides(epic_counts_local)
+    apply_min_entry_age_overrides(epic_counts_local)
+    apply_max_entry_age_overrides(epic_counts_local)
     apply_policy_term_overrides(epic_counts_local)
+    apply_min_maturity_age_overrides(epic_counts_local)
+    apply_max_maturity_age_overrides(epic_counts_local)
     apply_maturity_age_overrides(epic_counts_local)
     apply_premium_paying_term_overrides(epic_counts_local)
     apply_sum_assured_overrides(epic_counts_local)
+    apply_deferment_period_overrides(epic_counts_local)
+    apply_child_entry_age_overrides(epic_counts_local)
 
 
 def resolve_ppt_case_counts(target_rule, epic_config, epic_count_source, ppt_name):
@@ -493,7 +606,11 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         child_gender=child_gender,
     )
     if income_period is None:
-        income_period = INCOME_PERIOD_DEFAULT
+        # Choose income period based on the PPT (charge_year)
+        if charge_year == 8:
+            income_period = random.choice(INCOME_PERIOD_PPT8_VALID)
+        else:  # charge_year in [10, 12]
+            income_period = random.choice(INCOME_PERIOD_PPT10_12_VALID)
     if advance_income_option is None:
         advance_income_option = random.choice(YES_NO_OPTIONS)
     if payout_frequency is None:
@@ -552,7 +669,7 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         'chargeYear': charge_year,
         'Maturity age': maturity_year,
         'chargePeriod': 2,
-        'paymentFreq': payment_freq,
+        'paymentFreq': PAYMENT_FREQUENCY_STR.get(payment_freq, str(payment_freq)),
         'autoDebit': auto_debit,
         'installPremium': install_premium,
         'Distribution Channel': 'Direct' if(discount_info.get('tenantID') == 'SALES-APP') else 'Non-Direct',
@@ -676,10 +793,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             for i in range(neg_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                if i % 2 == 0:
-                    negative_age = round(random.uniform(max_entry_age + 1, max_entry_age + 10))
-                else:
-                    negative_age = round(random.uniform(1, min_entry_age - 1))
+                # if i % 2 == 0:
+                #     negative_age = round(random.uniform(max_entry_age + 1, max_entry_age + 10))
+                # else:
+                negative_age = round(random.uniform(1, min_entry_age - 1))
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, negative_age, deferment_period=deferment_period, PPT_RULES=entryage_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
@@ -742,8 +859,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 tuid_counter += 1
                 idx = random.randint(0, 2)
                 # ppt_name = PPT_NAME[(idx+i) % len(PPT_NAME)]
-                rule = policy_term_ppt_rules.get(ppt_name)
-                min_entry_age, max_entry_age = rule['entry_age_range']
+                plan_option = random.choice(PLAN_OPTIONS)
+                min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
                 age = random.randint(min_entry_age, max_entry_age)
                 min_policy_term, max_policy_term = ppt_age_ranges.get(ppt_name, (5, 85))
                 deferment_period = build_deferment_period(valid=True)
@@ -753,7 +870,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 # else:
                 #     policy_term_ppt_rules[ppt_name]["coverage_year_range"] = lambda age, charge_year: (max(charge_year+5, min_policy_term), min(max_policy_term, 85-age))
                 # Use coverage_year_range from PPT_RULES
-                min_policy_term, max_policy_term = rule['coverage_year_range'](age)
+                min_policy_term, max_policy_term = policy_term_ppt_rules[ppt_name]['coverage_year_range'](age)
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
                 common_row = build_common_row(
@@ -781,6 +898,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     discount_info,
                     idx,
                     deferment_period=deferment_period,
+                    plan_option=plan_option,
                     current_date_value=current_date_value
                 )
                 scenarios.append({**common_data, **common_row})
@@ -790,8 +908,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 # age = random.randint(min_entry_age, max_entry_age)
                 idx = random.randint(0, 2)
                 # ppt_name = PPT_NAME[(idx+i) % len(PPT_NAME)]
-                rule = policy_term_ppt_rules.get(ppt_name)
-                min_entry_age, max_entry_age = rule['entry_age_range']
+                plan_option = random.choice(PLAN_OPTIONS)
+                min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
                 age = random.randint(min_entry_age, max_entry_age)
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year, coverage_min, coverage_max = get_out_of_range_coverage(ppt_name, age, deferment_period=deferment_period, PPT_RULES=policy_term_ppt_rules)
@@ -822,6 +940,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     discount_info,
                     idx,
                     deferment_period=deferment_period,
+                    plan_option=plan_option,
                     current_date_value=current_date_value
                 )
                 scenarios.append({**common_data, **common_row})
@@ -904,6 +1023,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     discount_info,
                     idx,
                     deferment_period=deferment_period,
+                    plan_option=plan_option,
                     current_date_value=current_date_value
                 )
                 scenarios.append({**common_data, **common_row})
@@ -947,6 +1067,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     discount_info,
                     idx,
                     deferment_period=deferment_period,
+                    plan_option=plan_option,
                     current_date_value=current_date_value
                 )
                 scenarios.append({**common_data, **common_row})
@@ -1307,8 +1428,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             child_age = random.randint(child_min, child_max)
             deferment_period = build_deferment_period(valid=True)
@@ -1341,14 +1462,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 child_age=child_age,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             child_age = child_min - 1 if i % 2 == 0 else child_max + 1
             deferment_period = build_deferment_period(valid=True)
@@ -1381,6 +1503,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 child_age=child_age,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -1401,8 +1524,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -1440,8 +1562,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
@@ -1497,8 +1618,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -1536,8 +1656,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
@@ -1593,8 +1712,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -1632,8 +1750,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
@@ -1689,8 +1806,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -1728,8 +1844,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
@@ -1784,8 +1899,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -1826,14 +1941,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 install_premium=install_premium,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -1874,6 +1990,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 install_premium=install_premium,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -1887,8 +2004,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             # Force PPT = 8 for this epic
@@ -1923,14 +2040,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 income_period=random.choice(INCOME_PERIOD_PPT8_VALID),
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year = 8
@@ -1964,6 +2082,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 income_period=random.choice([3, 7, 8]),  # values outside INCOME_PERIOD_PPT8_VALID
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -1977,8 +2096,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             # Force PPT = 10 or 12 for this epic
@@ -2013,14 +2132,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 income_period=random.choice(INCOME_PERIOD_PPT10_12_VALID),
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year = random.choice([10, 12])
@@ -2054,6 +2174,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 income_period=random.choice([3, 8, 9]),  # values outside INCOME_PERIOD_PPT10_12_VALID
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -2067,353 +2188,13 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Positive',
-                EXPECTED_RESULT_MAP['Positive'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-        for i in range(neg_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=False)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Negative',
-                EXPECTED_RESULT_MAP['Negative'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-
-    # --- EPIC: IncomeShieldPayoutDuration ---
-    if 'IncomeShieldPayoutDuration' in selected_epics:
-        target_rule = 'IncomeShieldPayoutDuration'
-        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
-        ppt_name = "Regular Pay"
-        scenario_text = SCENARIO_MAP['IncomeShieldPayoutDuration']
-        for i in range(pos_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Positive',
-                EXPECTED_RESULT_MAP['Positive'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                income_shield_period=random.choice(INCOME_SHIELD_VALID_PERIODS),
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-        for i in range(neg_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Negative',
-                EXPECTED_RESULT_MAP['Negative'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                income_shield_period=random.choice([1, 3, 7, 12]),  # values outside INCOME_SHIELD_VALID_PERIODS
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-
-    # --- EPIC: IncomePayoutFrequency ---
-    if 'IncomePayoutFrequency' in selected_epics:
-        target_rule = 'IncomePayoutFrequency'
-        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
-        ppt_name = "Regular Pay"
-        scenario_text = "Income payout frequency should be YEARLY"
-        for i in range(pos_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Positive',
-                EXPECTED_RESULT_MAP['Positive'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                payout_frequency=PAYOUT_FREQUENCY_DEFAULT,
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-        for i in range(neg_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Negative',
-                EXPECTED_RESULT_MAP['Negative'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                payout_frequency='MONTHLY',
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-
-    # --- EPIC: AdvanceFeatureOption ---
-    if 'AdvanceFeatureOption' in selected_epics:
-        target_rule = 'AdvanceFeatureOption'
-        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
-        ppt_name = "Regular Pay"
-        scenario_text = "Advance income option should be Yes or No"
-        for i in range(pos_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            advance_income_option = random.choice(YES_NO_OPTIONS)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Positive',
-                EXPECTED_RESULT_MAP['Positive'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                advance_income_option=advance_income_option,
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-        for i in range(neg_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
-            common_row = build_common_row(
-                tuid_counter,
-                MODULE_NAME,
-                get_api_operation(target_rule),
-                CHECKING_NOTE_CREATE_VALUE,
-                ppt_name,
-                scenario_text,
-                'Negative',
-                EXPECTED_RESULT_MAP['Negative'],
-                INCEPTION_DATE_VALUE,
-                random.choice(policy_holder_location),
-                random.choice(insurer_location),
-                current_year - int(age),
-                age,
-                random.choice(GENDER),
-                random.choice(SMOKING),
-                random.choice(MEDICAL_INDI),
-                PRODUCT_CODE,
-                coverage_year,
-                charge_year,
-                maturity_year,
-                payment_freq,
-                discount_info,
-                idx,
-                deferment_period=deferment_period,
-                advance_income_option='Invalid',
-                current_date_value=current_date_value
-            )
-            scenarios.append({**common_data, **common_row})
-
-    # --- EPIC: PlanOptions ---
-    if 'PlanOptions' in selected_epics:
-        target_rule = 'PlanOptions'
-        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
-        ppt_name = "Regular Pay"
-        scenario_text = "Plan option should be option1 to option4"
-        for i in range(pos_count):
-            tuid_counter += 1
-            idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
             plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2446,8 +2227,355 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=False)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Negative',
+                EXPECTED_RESULT_MAP['Negative'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+
+    # --- EPIC: IncomeShieldPayoutDuration ---
+    if 'IncomeShieldPayoutDuration' in selected_epics:
+        target_rule = 'IncomeShieldPayoutDuration'
+        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
+        ppt_name = "Regular Pay"
+        scenario_text = SCENARIO_MAP['IncomeShieldPayoutDuration']
+        for i in range(pos_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Positive',
+                EXPECTED_RESULT_MAP['Positive'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                income_shield_period=random.choice(INCOME_SHIELD_VALID_PERIODS),
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+        for i in range(neg_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Negative',
+                EXPECTED_RESULT_MAP['Negative'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                income_shield_period=random.choice([1, 3, 7, 12]),  # values outside INCOME_SHIELD_VALID_PERIODS
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+
+    # --- EPIC: IncomePayoutFrequency ---
+    if 'IncomePayoutFrequency' in selected_epics:
+        target_rule = 'IncomePayoutFrequency'
+        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
+        ppt_name = "Regular Pay"
+        scenario_text = "Income payout frequency should be YEARLY"
+        for i in range(pos_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Positive',
+                EXPECTED_RESULT_MAP['Positive'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                payout_frequency=PAYOUT_FREQUENCY_DEFAULT,
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+        for i in range(neg_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Negative',
+                EXPECTED_RESULT_MAP['Negative'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                payout_frequency='MONTHLY',
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+
+    # --- EPIC: AdvanceFeatureOption ---
+    if 'AdvanceFeatureOption' in selected_epics:
+        target_rule = 'AdvanceFeatureOption'
+        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
+        ppt_name = "Regular Pay"
+        scenario_text = "Advance income option should be Yes or No"
+        for i in range(pos_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            advance_income_option = random.choice(YES_NO_OPTIONS)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Positive',
+                EXPECTED_RESULT_MAP['Positive'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                advance_income_option=advance_income_option,
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+        for i in range(neg_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Negative',
+                EXPECTED_RESULT_MAP['Negative'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                advance_income_option='Invalid',
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+
+    # --- EPIC: PlanOptions ---
+    if 'PlanOptions' in selected_epics:
+        target_rule = 'PlanOptions'
+        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
+        ppt_name = "Regular Pay"
+        scenario_text = "Plan option should be option1 to option4"
+        for i in range(pos_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
+            age = random.randint(min_entry_age, max_entry_age)
+            deferment_period = build_deferment_period(valid=True)
+            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            discount_info = calculate_discounts(ppt_name)
+            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                scenario_text,
+                'Positive',
+                EXPECTED_RESULT_MAP['Positive'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                random.choice(MEDICAL_INDI),
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                payment_freq,
+                discount_info,
+                idx,
+                deferment_period=deferment_period,
+                plan_option=plan_option,
+                current_date_value=current_date_value
+            )
+            scenarios.append({**common_data, **common_row})
+        for i in range(neg_count):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2492,8 +2620,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2526,14 +2654,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 existing_customer=existing_customer,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2565,6 +2694,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 existing_customer='Maybe',
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -2578,8 +2708,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2612,14 +2742,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 bandhan_employee=bandhan_employee,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2651,6 +2782,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 idx,
                 deferment_period=deferment_period,
                 bandhan_employee='Maybe',
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -2670,8 +2802,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # else:
             #     filtered_PPT_NAME = PPT_NAME.copy()
             #ppt_name = filtered_PPT_NAME[(idx+i) % len(filtered_PPT_NAME)]
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2703,6 +2835,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -2712,8 +2845,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # age = random.randint(min_entry_age, max_entry_age)
             idx = random.randint(0, 2)
             ppt_name = PPT_NAME[(idx+i) % len(PPT_NAME)]
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
@@ -2747,6 +2880,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -2764,8 +2898,11 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         ppt_enabled = premium_paying_term_config.get('ppt_enabled', {}) # check for 'same count' mode
 
         for ppt_name in PPT_NAME:
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            # Per-PPT age range uses the most restrictive plan option max entry age
+            _ppt_min_ages = [get_entry_age_range_for_plan_option(p)[0] for p in PLAN_OPTIONS]
+            _ppt_max_ages = [get_entry_age_range_for_plan_option(p)[1] for p in PLAN_OPTIONS]
+            min_entry_age = min(_ppt_min_ages)
+            max_entry_age = min(_ppt_max_ages)  # conservative: use smallest max
             # if per_ppt_mode:
             #     pos_count = int(ppt_pos_counts.get(ppt_name, 0))
             #     neg_count = int(ppt_neg_counts.get(ppt_name, 0))
@@ -2811,6 +2948,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     discount_info,
                     idx,
                     deferment_period=deferment_period,
+                    plan_option=plan_option,
                     current_date_value=current_date_value
                 )
                 scenarios.append({**common_data, **common_row})
@@ -2848,6 +2986,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     discount_info,
                     idx,
                     deferment_period=deferment_period,
+                    plan_option=plan_option,
                     current_date_value=current_date_value
                 )
                 scenarios.append({**common_data, **common_row})
@@ -2869,8 +3008,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             positive_age = max(min_entry_age, min(max_entry_age - i, max_entry_age)) if i % 2 == 0 else min(max_entry_age, min_entry_age + i)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period)
@@ -2901,6 +3040,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             extra_fields = {'sumAssured': random.randint(min_sum, max_sum)}
@@ -2910,8 +3050,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            rule = PPT_RULES.get(ppt_name)
-            min_entry_age, max_entry_age = rule['entry_age_range']
+            plan_option = random.choice(PLAN_OPTIONS)
+            min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             positive_age = max(min_entry_age, min(max_entry_age - i, max_entry_age)) if i % 2 == 0 else min(max_entry_age, min_entry_age + i)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period)
@@ -2944,6 +3084,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
+                plan_option=plan_option,
                 current_date_value=current_date_value
             )
             extra_fields = {'sumAssured': neg_assured_sum}

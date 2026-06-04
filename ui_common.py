@@ -2227,14 +2227,14 @@ def render_base_plan_epics(
                             "Half-Yearly",
                             "Quarterly",
                             "Monthly",
-                            "Single Pay",
+                            # "Single Pay",
                         ]
                         frequency_map = {
                             "Annual": 1,
                             "Half-Yearly": 2,
                             "Quarterly": 3,
                             "Monthly": 4,
-                            "Single Pay": 5,
+                            # "Single Pay": 5,
                         }
                         freq_cols = st.columns(len(frequency_options) + 1)
                         selected_frequencies = []
