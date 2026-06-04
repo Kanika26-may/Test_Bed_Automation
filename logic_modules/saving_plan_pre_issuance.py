@@ -175,14 +175,11 @@ column_order = [
 
 
 
-# SumAssured bounds used by SumAssuredValidation epic (min > 378000 = 10.5 * 36000)
-PPT_RULES_TT2 = {
-        "Regular Pay": (378001, 5000000)  # was (5000000, 20000000)
-    }
-
 def calculate_discounts(ppt_type):
-    # sumAssured = 10.5 * annualized_premium; annualized_premium > 36000 → sumAssured > 378000
-    annualized_premium = random.randint(36001, 500000)
+    # annualized_premium_range and sum_assured_range are stored in PPT_RULES and updated from UI
+    ppt = PPT_RULES.get(ppt_type, {})
+    ann_min, ann_max = ppt.get('annualized_premium_range', (36001, 500000))
+    annualized_premium = random.randint(ann_min, ann_max)
     sum_assured = int(10.5 * annualized_premium)
     discount_type = random.choice(EXISTING_CUSTOMER_DISCOUNT)
     existing_customer_discount_calc = "Yes" if discount_type > 0 else "No"
@@ -212,6 +209,8 @@ PPT_RULES = {
         "coverage_year_range": lambda age: (9, max(9, 67 - age)),  # plan max maturity age = 67
         "maturity_year": lambda age, coverage_year: age + coverage_year,
         "maturity_age_range": (27, 67),
+        "annualized_premium_range": (36000, 500000),  # valid annualized premium (>= 36000)
+        "sum_assured_range": (378000, 5000000),        # valid sum assured (>= 378000 = 10.5 × 36000)
         "plan_options": {
             'CareerStart Income': {
                 'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Income']),
@@ -394,11 +393,32 @@ def apply_premium_paying_term_overrides(epic_counts_local):
 
 
 def apply_sum_assured_overrides(epic_counts_local):
-    sum_assured_conf = epic_counts_local.get('SumAssuredValidation', {})
-    min_sa = sum_assured_conf.get("Regular Pay", {}).get('min_val')
-    max_sa = sum_assured_conf.get("Regular Pay", {}).get('max_val')
-    if max_sa is not None or min_sa is not None:
-        PPT_RULES_TT2["Regular Pay"] = (min_sa, max_sa)
+    """Sync SumAssuredValidation UI min/max → PPT_RULES sum_assured_range."""
+    conf = epic_counts_local.get('SumAssuredValidation', {})
+    min_sa = conf.get('min_val')
+    max_sa = conf.get('max_val')
+    if min_sa is not None or max_sa is not None:
+        ppt = PPT_RULES.get('Regular Pay', {})
+        cur_min, cur_max = ppt.get('sum_assured_range', (378001, 5000000))
+        PPT_RULES['Regular Pay']['sum_assured_range'] = (
+            int(min_sa) if min_sa is not None else cur_min,
+            int(max_sa) if max_sa is not None else cur_max,
+        )
+
+
+def apply_premium_validation_overrides(epic_counts_local):
+    """Sync PremiumValidation UI min/max → PPT_RULES annualized_premium_range."""
+    conf = epic_counts_local.get('PremiumValidation', {})
+    min_pv = conf.get('min_val')
+    max_pv = conf.get('max_val')
+    if min_pv is not None or max_pv is not None:
+        ppt = PPT_RULES.get('Regular Pay', {})
+        cur_min, cur_max = ppt.get('annualized_premium_range', (36001, 500000))
+        # min must be strictly above the threshold (annualized premium > min_val)
+        PPT_RULES['Regular Pay']['annualized_premium_range'] = (
+            int(min_pv) + 1 if min_pv is not None else cur_min,
+            int(max_pv) if max_pv is not None else cur_max,
+        )
 
 
 def _read_single_val(raw):
@@ -521,6 +541,7 @@ def update_ppt_rules_with_epic_counts(epic_counts_local, epic_counts_rider_local
     apply_maturity_age_overrides(epic_counts_local)
     apply_premium_paying_term_overrides(epic_counts_local)
     apply_sum_assured_overrides(epic_counts_local)
+    apply_premium_validation_overrides(epic_counts_local)
     apply_deferment_period_overrides(epic_counts_local)
     apply_child_entry_age_overrides(epic_counts_local)
 
@@ -1889,12 +1910,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
     # --- EPIC: PremiumValidation ---
     if 'PremiumValidation' in selected_epics:
         target_rule = 'PremiumValidation'
-        _pv_conf = epic_counts.get(target_rule, {})
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
-        # Read annualized premium bounds from UI config; default minimum is 36000
-        _pv_min = int(_pv_conf.get('min_val') or 36000)
-        _pv_max = int(_pv_conf.get('max_val') or 500000)
+        # annualized_premium_range is already updated from UI by apply_premium_validation_overrides
+        _pv_min, _pv_max = PPT_RULES[ppt_name].get('annualized_premium_range', (36001, 500000))
         scenario_text = "Installment premium should be valid"
         for i in range(pos_count):
             tuid_counter += 1
@@ -1905,8 +1924,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            # annualized_premium above minimum threshold
-            ann_prem = random.randint(max(36001, _pv_min), _pv_max)
+            # annualized_premium: valid (above threshold)
+            ann_prem = random.randint(_pv_min, _pv_max)
             discount_info = {
                 "Existing Customer Discount (%)": random.choice(EXISTING_CUSTOMER_DISCOUNT),
                 "Discount Type": 0,
@@ -1954,8 +1973,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            # annualized_premium below minimum threshold (negative case)
-            neg_ann_prem = random.randint(1000, max(1000, _pv_min - 1))
+            # annualized_premium: invalid (below threshold)
+            neg_ann_prem = random.randint(1000, max(1000, _pv_min - 2))
             neg_discount_info = {
                 "Existing Customer Discount (%)": 0,
                 "Discount Type": 0,
@@ -2998,10 +3017,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         ppt_name = "Regular Pay"
         pos_count = sum_assured_validation_config.get(ppt_name, {}).get('positive', sum_assured_validation_config.get('positive', 0))
         neg_count = sum_assured_validation_config.get(ppt_name, {}).get('negative', sum_assured_validation_config.get('negative', 0))
-        # Read min/max from UI config (flat keys); fallback to PPT_RULES_TT2
-        _sa_default_min, _sa_default_max = PPT_RULES_TT2.get(ppt_name, (378001, 5000000))
-        min_sum = int(sum_assured_validation_config.get('min_val') or _sa_default_min)
-        max_sum = int(sum_assured_validation_config.get('max_val') or _sa_default_max)
+        # sum_assured_range already updated from UI by apply_sum_assured_overrides
+        min_sum, max_sum = PPT_RULES[ppt_name].get('sum_assured_range', (378001, 5000000))
         message = SCENARIO_MAP['SumAssuredValidation'](ppt_name, min_sum=min_sum)
 
         # Positive cases
