@@ -39,19 +39,19 @@ PAYMENT_FREQUENCY = [1, 2, 3, 4] # Annual, Half-Yearly, Quarterly, Monthly
 PAYMENT_FREQUENCY_STR = {1: 'Annual', 2: 'Half-Yearly', 3: 'Quarterly', 4: 'Monthly'}
 
 YES_NO_OPTIONS = ['Yes', 'No']
-PLAN_OPTIONS = ['CareerStart Income', 'CareerStart Health Shield Income', 'CareerStart Secure Income', 'CareerStart Life Shield Income']
+PLAN_OPTIONS = ['CS_I', 'CS_HSI', 'CS_SI', 'CS_LSI']
 PLAN_OPTION_MAX_ENTRY_AGE = {
-    'CareerStart Income': 50,
-    'CareerStart Health Shield Income': 45,
-    'CareerStart Secure Income': 45,
-    'CareerStart Life Shield Income': 45,
+    'CS_I': 50,
+    'CS_HSI': 45,
+    'CS_SI': 45,
+    'CS_LSI': 45,
 }
 
 PLAN_OPTION_MAX_MATURITY_AGE = {
-    'CareerStart Income': 67,
-    'CareerStart Health Shield Income': 62,
-    'CareerStart Secure Income': 62,
-    'CareerStart Life Shield Income': 62,
+    'CS_I': 67,
+    'CS_HSI': 62,
+    'CS_SI': 62,
+    'CS_LSI': 62,
 }
 
 def get_entry_age_range_for_plan_option(plan_option, ppt_name="Regular Pay"):
@@ -143,10 +143,10 @@ POLICY_TERM_NAMES = {"Regular Pay": "RP"}
 def premium_paying_term_message(ppt, min_ppt=None, max_ppt=None, ppt_limit=None, valid_ppTs=None):
     if valid_ppTs:
         return f"Premium Paying Term should be {', '.join(map(str, valid_ppTs))} years for {ppt}."
-    if ppt_limit is not None:
-        return f"Premium Paying Term should be {ppt_limit} years for {ppt}."
-    elif min_ppt is not None and max_ppt is not None:
-        return f"Premium Paying Term chosen should be between {min_ppt} and {max_ppt} years for {ppt}."
+    # if ppt_limit is not None:
+    #     return f"Premium Paying Term should be {ppt_limit} years for {ppt}."
+    # elif min_ppt is not None and max_ppt is not None:
+    #     return f"Premium Paying Term chosen should be between {min_ppt} and {max_ppt} years for {ppt}."
 
 def sum_assured_validation_message(ppt, min_sum=None, max_sum=None):
     if min_sum is not None and max_sum is not None:
@@ -154,9 +154,9 @@ def sum_assured_validation_message(ppt, min_sum=None, max_sum=None):
     return f"Min Base SA should not be less than {min_sum} for {ppt}"
 
 SCENARIO_MAP = {
-        'MinimumEntryAge': lambda ppt, min_entry_age, max_entry_age: f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {ppt}",
+        'MinimumEntryAge': lambda ppt, min_entry_age, max_entry_age: f"The age of Life Assured should be greater than or equal to {min_entry_age} years for {ppt}",
         'PolicyTerm': lambda ppt, min_policy_term, max_policy_term: f"Policy term chosen should be between {min_policy_term} years to {max_policy_term} years for {ppt}",
-        'MinimumMaturityAge': lambda ppt, min_maturity_age, max_maturity_age: f"The minimum maturity age of Life Assured should be between {min_maturity_age} to {max_maturity_age} years for {ppt}",
+        'MinimumMaturityAge': lambda ppt, min_maturity_age, max_maturity_age: f"The minimum maturity age of Life Assured should be greater than or equal to {min_maturity_age} years for {ppt}",
         'PaymentFrequency': f"To check for premium Frequency chosen should be Yearly, Half-Yearly, Quarterly & Monthly",
         'PremiumPayingTerm': premium_paying_term_message,
         'SumAssuredValidation': sum_assured_validation_message,
@@ -212,21 +212,21 @@ PPT_RULES = {
         "annualized_premium_range": (36000, 500000),  # valid annualized premium (>= 36000)
         "sum_assured_range": (378000, 5000000),        # valid sum assured (>= 378000 = 10.5 × 36000)
         "plan_options": {
-            'CareerStart Income': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Income']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Income'])
+            'CS_I': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_I']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_I'])
             },
-            'CareerStart Health Shield Income': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Health Shield Income']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Health Shield Income'])
+            'CS_HSI': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_HSI']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_HSI'])
             },
-            'CareerStart Secure Income': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Secure Income']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Secure Income'])
+            'CS_SI': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_SI']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_SI'])
             },
-            'CareerStart Life Shield Income': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CareerStart Life Shield Income']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CareerStart Life Shield Income'])
+            'CS_LSI': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_LSI']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_LSI'])
             },
         },
     },
@@ -449,10 +449,10 @@ def apply_min_entry_age_overrides(epic_counts_local):
 def apply_max_entry_age_overrides(epic_counts_local):
     """Sync MaximumEntryAgePlanOptionX UI values → PPT_RULES plan_options entry_age_range max."""
     plan_epic_map = {
-        'MaximumEntryAgePlanOption1': 'CareerStart Income',
-        'MaximumEntryAgePlanOption2': 'CareerStart Health Shield Income',
-        'MaximumEntryAgePlanOption3': 'CareerStart Secure Income',
-        'MaximumEntryAgePlanOption4': 'CareerStart Life Shield Income',
+        'MaximumEntryAgePlanOption1': 'CS_I',
+        'MaximumEntryAgePlanOption2': 'CS_HSI',
+        'MaximumEntryAgePlanOption3': 'CS_SI',
+        'MaximumEntryAgePlanOption4': 'CS_LSI',
     }
     ppt = PPT_RULES.get('Regular Pay', {})
     plan_opts = ppt.setdefault('plan_options', {})
@@ -486,10 +486,10 @@ def apply_min_maturity_age_overrides(epic_counts_local):
 def apply_max_maturity_age_overrides(epic_counts_local):
     """Sync MaximumMaturityAgePlanOptionX UI values → PPT_RULES plan_options maturity_age_range max."""
     plan_epic_map = {
-        'MaximumMaturityAgePlanOption1': 'CareerStart Income',
-        'MaximumMaturityAgePlanOption2': 'CareerStart Health Shield Income',
-        'MaximumMaturityAgePlanOption3': 'CareerStart Secure Income',
-        'MaximumMaturityAgePlanOption4': 'CareerStart Life Shield Income',
+        'MaximumMaturityAgePlanOption1': 'CS_I',
+        'MaximumMaturityAgePlanOption2': 'CS_HSI',
+        'MaximumMaturityAgePlanOption3': 'CS_SI',
+        'MaximumMaturityAgePlanOption4': 'CS_LSI',
     }
     ppt = PPT_RULES.get('Regular Pay', {})
     plan_opts = ppt.setdefault('plan_options', {})
@@ -1106,7 +1106,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         # min from MinimumEntryAge epic
         _min_raw = epic_counts.get('MinimumEntryAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         min_entry_age = int(_min_raw) if isinstance(_min_raw, (int, float)) else MIN_ENTRY_AGE
-        scenario_text = f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {plan_option}"
+        scenario_text = f"The age of Life Assured should be less than or equal to {max_entry_age} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1192,7 +1192,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         max_entry_age = int(_max_raw) if isinstance(_max_raw, (int, float)) else (int(_max_raw[1]) if isinstance(_max_raw, (list, tuple)) else PLAN_OPTION_MAX_ENTRY_AGE.get(plan_option, MAX_ENTRY_AGE))
         _min_raw = epic_counts.get('MinimumEntryAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         min_entry_age = int(_min_raw) if isinstance(_min_raw, (int, float)) else MIN_ENTRY_AGE
-        scenario_text = f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {plan_option}"
+        scenario_text = f"The age of Life Assured should be less than or equal to {max_entry_age} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1278,7 +1278,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         max_entry_age = int(_max_raw) if isinstance(_max_raw, (int, float)) else (int(_max_raw[1]) if isinstance(_max_raw, (list, tuple)) else PLAN_OPTION_MAX_ENTRY_AGE.get(plan_option, MAX_ENTRY_AGE))
         _min_raw = epic_counts.get('MinimumEntryAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         min_entry_age = int(_min_raw) if isinstance(_min_raw, (int, float)) else MIN_ENTRY_AGE
-        scenario_text = f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {plan_option}"
+        scenario_text = f"The age of Life Assured should be less than or equal to {max_entry_age} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1364,7 +1364,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         max_entry_age = int(_max_raw) if isinstance(_max_raw, (int, float)) else (int(_max_raw[1]) if isinstance(_max_raw, (list, tuple)) else PLAN_OPTION_MAX_ENTRY_AGE.get(plan_option, MAX_ENTRY_AGE))
         _min_raw = epic_counts.get('MinimumEntryAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         min_entry_age = int(_min_raw) if isinstance(_min_raw, (int, float)) else MIN_ENTRY_AGE
-        scenario_text = f"The age of Life Assured should be between {min_entry_age} to {max_entry_age} years for {plan_option}"
+        scenario_text = f"The age of Life Assured should be less than or equal to {max_entry_age} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1544,7 +1544,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         # min from MinimumMaturityAge epic UI
         _mmin_raw = epic_counts.get('MinimumMaturityAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         maturity_min = int(_mmin_raw) if isinstance(_mmin_raw, (int, float)) else 27
-        scenario_text = f"The maturity age of Life Assured should be between {maturity_min} to {maturity_max} years for {plan_option}"
+        scenario_text = f"The maturity age of Life Assured should be less than or equal to {maturity_max} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1639,7 +1639,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         maturity_max = int(_mmax_raw) if isinstance(_mmax_raw, (int, float)) else PLAN_OPTION_MAX_MATURITY_AGE.get(plan_option, 62)
         _mmin_raw = epic_counts.get('MinimumMaturityAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         maturity_min = int(_mmin_raw) if isinstance(_mmin_raw, (int, float)) else 27
-        scenario_text = f"The maturity age of Life Assured should be between {maturity_min} to {maturity_max} years for {plan_option}"
+        scenario_text = f"The maturity age of Life Assured should be less than or equal to {maturity_max} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1734,7 +1734,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         maturity_max = int(_mmax_raw) if isinstance(_mmax_raw, (int, float)) else PLAN_OPTION_MAX_MATURITY_AGE.get(plan_option, 62)
         _mmin_raw = epic_counts.get('MinimumMaturityAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         maturity_min = int(_mmin_raw) if isinstance(_mmin_raw, (int, float)) else 27
-        scenario_text = f"The maturity age of Life Assured should be between {maturity_min} to {maturity_max} years for {plan_option}"
+        scenario_text = f"The maturity age of Life Assured should be less than or equal to {maturity_max} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1829,7 +1829,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         maturity_max = int(_mmax_raw) if isinstance(_mmax_raw, (int, float)) else PLAN_OPTION_MAX_MATURITY_AGE.get(plan_option, 62)
         _mmin_raw = epic_counts.get('MinimumMaturityAge', {}).get('ppt_age_ranges', {}).get(ppt_name)
         maturity_min = int(_mmin_raw) if isinstance(_mmin_raw, (int, float)) else 27
-        scenario_text = f"The maturity age of Life Assured should be between {maturity_min} to {maturity_max} years for {plan_option}"
+        scenario_text = f"The maturity age of Life Assured should be less than or equal to {maturity_max} years for {plan_option}"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1920,8 +1920,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
         # annualized_premium_range is already updated from UI by apply_premium_validation_overrides
-        _pv_min, _pv_max = PPT_RULES[ppt_name].get('annualized_premium_range', (36001, 500000))
-        scenario_text = "Installment premium should be valid"
+        _pv_min, _pv_max = PPT_RULES[ppt_name].get('annualized_premium_range', (36000, 500000))
+        scenario_text = f"Installment premium should be {_pv_min} or above"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2557,7 +2557,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         target_rule = 'PlanOptions'
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
-        scenario_text = "Plan option should be option1 to option4"
+        scenario_text = "Plan option should be in CS_I, CS_HSI, CS_SI, CS_LSI"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2632,7 +2632,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                plan_option='option5',
+                plan_option='CS_Invalid',
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -3026,7 +3026,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         pos_count = sum_assured_validation_config.get(ppt_name, {}).get('positive', sum_assured_validation_config.get('positive', 0))
         neg_count = sum_assured_validation_config.get(ppt_name, {}).get('negative', sum_assured_validation_config.get('negative', 0))
         # sum_assured_range already updated from UI by apply_sum_assured_overrides
-        min_sum, max_sum = PPT_RULES[ppt_name].get('sum_assured_range', (378001, 5000000))
+        min_sum, max_sum = PPT_RULES[ppt_name].get('sum_assured_range', (378000, 5000000))
         message = SCENARIO_MAP['SumAssuredValidation'](ppt_name, min_sum=min_sum)
 
         # Positive cases
@@ -3083,7 +3083,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             neg_assured_sum = min_sum - 1000
-            message = SCENARIO_MAP['SumAssuredValidation'](ppt_name, min_sum=min_sum, max_sum=max_sum)
+            message = SCENARIO_MAP['SumAssuredValidation'](ppt_name, min_sum=min_sum)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
