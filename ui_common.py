@@ -419,13 +419,15 @@ def collect_current_config():
 
     # Collect all relevant session state keys
     key_fragments = [
+        # --- General / term / ulip ---
         "epic_cb_",
         "epic_pos_",
         "epic_neg_",
         "ppt_enabled_",
         "portfolio_type_",
-        "entry_age_slider_",
-        "maturity_age_slider_",
+        "entry_age_slider_",       # term/ulip entry age + saving plan PolicyTerm (same-count)
+        "maturity_age_slider_",    # term/ulip maturity + saving plan MaximumEntryAgePlanOption (diff-count)
+        "max_maturity_age_slider_",# saving plan MaximumMaturityAgePlanOption (diff-count)
         "freq_cb_",
         "sa_enabled_",
         "min_sp_",
@@ -442,6 +444,35 @@ def collect_current_config():
         "post_epic_pos_",
         "post_cfg_",
         "post_select_all_",
+        # --- Saving plan: same-count mode single-value age sliders ---
+        "MinEntryAge_slider_",
+        "MaxEntryAgeOpt1_slider_",
+        "MaxEntryAgeOpt2_slider_",
+        "MaxEntryAgeOpt3_slider_",
+        "MaxEntryAgeOpt4_slider_",
+        "MinimumMaturityAge_slider_",
+        "MaxMaturityAgeOpt1_slider_",
+        "MaxMaturityAgeOpt2_slider_",
+        "MaxMaturityAgeOpt3_slider_",
+        "MaxMaturityAgeOpt4_slider_",  # also covers ExistingCustomer & BandhanLifeEmployee sliders
+        "ChildEntryAge_slider_",       # same-count and diff-count child entry age
+        "DefermentPeriod_slider_",     # same-count deferment period
+        # --- Saving plan: diff-count mode sliders ---
+        "child_entry_age_slider_",
+        "deferment_period_slider_",
+        "income_period_ppt_8_slider_",
+        "income_period_ppt_10_12_slider_",
+        "income_shield_payout_duration_slider_",
+        "income_payout_frequency_slider_",
+        "advance_feature_option_slider_",
+        "plan_options_slider_",
+        "premium_paying_term_slider_",
+        "premium_validation_slider_",
+        # --- Saving plan: number inputs (PremiumValidation, SumAssuredValidation) ---
+        "min_val_",
+        "max_val_",
+        # --- Saving plan: PlanOptions epic checkboxes ---
+        "plan_option_cb_",
     ]
     for key, value in st.session_state.items():
         if any(fragment in key for fragment in key_fragments):
