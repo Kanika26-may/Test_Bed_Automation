@@ -170,7 +170,7 @@ column_order = [
     "inceptionDate","current_date", "InceptionBackdays", "policyHolderLocation", "insurerLocation",
     "LABirthdate","Child Birthdate", "LAAge","ChildAge", "LAGender",  "ChildGender","smoking", "Medicalindi",
     "planOption","productCode", "coverageYear",  "chargeYear","Coverage upto Age","DefermentPeriod", "incomePeriod",
-    "advanceIncomeOption","chargePeriod","paymentFreq","payoutFrequency", "Advance Income", "ddaMandateIndi", "Distribution Channel", "discountType", "Existing Customer", "IncomeShieldMonthlyInstalmentPeriod", "sumAssured", "autoDebit", "installPremium","BaseEMR_extraType", "BaseEMR_extraArith", "BaseEMR_extraPara", "BasePerMille_extraType", "BasePerMille_extraArith", "BasePerMille_extraPara",  "Maturity age","Standard Age Proof"
+    "advanceIncomeOption","chargePeriod","paymentFreq","payoutFrequency", "ddaMandateIndi", "Distribution Channel", "discountType", "Existing Customer", "IncomeShieldMonthlyInstalmentPeriod", "sumAssured", "autoDebit", "installPremium","BaseEMR_extraType", "BaseEMR_extraArith", "BaseEMR_extraPara", "BasePerMille_extraType", "BasePerMille_extraArith", "BasePerMille_extraPara",  "Maturity age","Standard Age Proof"
 ]
 
 
@@ -311,12 +311,12 @@ def get_out_of_range_charge_year(ppt_name, age, deferment_period=None, PPT_RULES
     maturity_year = rule['maturity_year'](age, coverage_year)
     return charge_year_out, coverage_year, maturity_year
 
-def get_out_of_range_maturity_year_for_range(ppt_name, age, maturity_min, maturity_max, deferment_period=None, PPT_RULES=PPT_RULES):
+def get_out_of_range_maturity_year_for_range(ppt_name, age, maturity_min, maturity_max, deferment_period=None, max=None,    PPT_RULES=PPT_RULES):
     """Generate out-of-range maturity year for a specific maturity age range (outside maturity_min-maturity_max)."""
     rule = PPT_RULES.get(ppt_name)
     
     # Randomly choose to go below minimum or above maximum
-    if random.choice([True, False]):
+    if max:
         # Generate maturity year above maximum
         coverage_year = maturity_max - age + random.randint(1, 5)
     else:
@@ -571,10 +571,10 @@ def build_case_age(min_age, max_age, iteration_index):
 
 
 def build_entry_age_negative(min_age, max_age, iteration_index, ppt_name):
-    if iteration_index % 2 == 0:
-        negative_age = round(random.uniform(max_age + 1, max_age + 10))
-    else:
-        negative_age = round(random.uniform(1, min_age - 1))
+    # if iteration_index % 2 == 0:
+    negative_age = round(random.uniform(max_age + 1, max_age + 10))
+    # else:
+    #     negative_age = round(random.uniform(1, min_age - 1))
     return negative_age
 
 def build_child_fields(child_age=None, child_gender=None, current_year=None):
@@ -633,7 +633,7 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         else:  # charge_year in [10, 12]
             income_period = random.choice(INCOME_PERIOD_PPT10_12_VALID)
     if advance_income_option is None:
-        advance_income_option = random.choice(YES_NO_OPTIONS)
+        advance_income_option = random.choice(["True", "False"])
     if payout_frequency is None:
         payout_frequency = PAYOUT_FREQUENCY_DEFAULT
     if income_shield_period is None:
@@ -690,10 +690,10 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         'chargeYear': charge_year,
         'Maturity age': maturity_year,
         'chargePeriod': 2,
-        'paymentFreq': PAYMENT_FREQUENCY_STR.get(payment_freq, str(payment_freq)),
+        'paymentFreq': PAYMENT_FREQUENCY_STR.get(payment_freq, str(payment_freq)) if payment_freq!=5 else "Single Pay",
         'autoDebit': auto_debit,
         'installPremium': install_premium,
-        'Distribution Channel': 'Direct' if(discount_info.get('tenantID') == 'SALES-APP') else 'Non-Direct',
+        'Distribution Channel': 'Other than Direct/Online',
         'ddaMandateIndi': 'N',
         'discountType': discount_info.get("Existing Customer Discount (%)"),
         'Existing Customer': existing_customer,
@@ -720,10 +720,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         logging.exception('Failed to apply PPT_RULES overrides from epic_counts')
 
     common_data = {
-                'BaseEMR_extraType': 'A',
+                'BaseEMR_extraType': 'Yes',
                 'BaseEMR_extraArith': 8,
                 'BaseEMR_extraPara': 0,
-                'BasePerMille_extraType': 'F',
+                'BasePerMille_extraType': 'Yes',
                 'BasePerMille_extraArith': 1,
                 'BasePerMille_extraPara': 0,
                 'Standard Age Proof': 'Yes',
@@ -1060,6 +1060,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_min_maturity_age,
                     plan_max_maturity_age,
                     deferment_period=deferment_period,
+                    max=False
                 )
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1493,7 +1494,9 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             plan_option = random.choice(PLAN_OPTIONS)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
-            child_age = child_min - 1 if i % 2 == 0 else child_max + 1
+            child_age = child_min - 1 if i % 2 == 0 else child_max + random.randint(1, 5)
+            if child_age < 0:
+                child_age = child_max + random.randint(1, 5)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -1591,7 +1594,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 age,
                 maturity_min,
                 maturity_max,
-                deferment_period=deferment_period
+                deferment_period=deferment_period,
+                max=True
             )
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1685,7 +1689,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 age,
                 maturity_min,
                 maturity_max,
-                deferment_period=deferment_period
+                deferment_period=deferment_period,
+                max=True
             )
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1779,7 +1784,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 age,
                 maturity_min,
                 maturity_max,
-                deferment_period=deferment_period
+                deferment_period=deferment_period,
+                max=True
             )
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1873,7 +1879,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 age,
                 maturity_min,
                 maturity_max,
-                deferment_period=deferment_period
+                deferment_period=deferment_period,
+                max=True
             )
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1927,9 +1934,9 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # annualized_premium: valid (above threshold)
             ann_prem = random.randint(_pv_min, _pv_max)
             discount_info = {
-                "Existing Customer Discount (%)": random.choice(EXISTING_CUSTOMER_DISCOUNT),
+                "Existing Customer Discount (%)": i%2,
                 "Discount Type": 0,
-                "Existing Customer Discount Calculated": "No",
+                "Existing Customer Discount Calculated": "Yes" if i%2 else "No",
                 "sumAssured": int(10.5 * ann_prem),
                 "annualized_premium": ann_prem,
             }
@@ -1976,9 +1983,9 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # annualized_premium: invalid (below threshold)
             neg_ann_prem = random.randint(1000, max(1000, _pv_min - 2))
             neg_discount_info = {
-                "Existing Customer Discount (%)": 0,
+                "Existing Customer Discount (%)": i%2,
                 "Discount Type": 0,
-                "Existing Customer Discount Calculated": "No",
+                "Existing Customer Discount Calculated": "Yes" if i%2 else "No",
                 "sumAssured": int(10.5 * neg_ann_prem),
                 "annualized_premium": neg_ann_prem,
             }
@@ -2451,7 +2458,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                payout_frequency='MONTHLY',
+                payout_frequency=random.choice(["Single Pay", "Monthly", "Quarterly", "Half-Yearly"]),  # values outside PAYOUT_FREQUENCY_DEFAULT       
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
@@ -2462,7 +2469,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         target_rule = 'AdvanceFeatureOption'
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
-        scenario_text = "Advance income option should be Yes or No"
+        scenario_text = "Advance income option should be True or False"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2473,7 +2480,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            advance_income_option = random.choice(YES_NO_OPTIONS)
+            advance_income_option = random.choice([True, False])
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2712,7 +2719,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                existing_customer='Maybe',
+                existing_customer=random.choice(['Unknown', '']),
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
@@ -2800,7 +2807,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                bandhan_employee='Maybe',
+                bandhan_employee=random.choice(['Unknown', '']),
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
@@ -2873,7 +2880,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # payment_freq = random.choice(PAYMENT_FREQUENCY)
             # invalid_freq = random.choice([6, 7]) # Invalid frequencies
             # paymentFreqStr = "invalid_freq"
-            payment_freq = random.choice([5, 6])
+            payment_freq = 5
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2918,6 +2925,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
 
         for ppt_name in PPT_NAME:
             # Per-PPT age range uses the most restrictive plan option max entry age
+            plan_option = random.choice(PLAN_OPTIONS)
             _ppt_min_ages = [get_entry_age_range_for_plan_option(p)[0] for p in PLAN_OPTIONS]
             _ppt_max_ages = [get_entry_age_range_for_plan_option(p)[1] for p in PLAN_OPTIONS]
             min_entry_age = min(_ppt_min_ages)
@@ -3074,7 +3082,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            neg_assured_sum = min_sum - 1000 if (i % 2 == 0) else max_sum + 1000
+            neg_assured_sum = min_sum - 1000
             message = SCENARIO_MAP['SumAssuredValidation'](ppt_name, min_sum=min_sum, max_sum=max_sum)
             common_row = build_common_row(
                 tuid_counter,
