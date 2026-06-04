@@ -1962,7 +1962,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # annualized_premium: valid (above threshold)
             ann_prem = random.randint(_pv_min, _pv_max)
             discount_info = {
-                "Existing Customer Discount (%)": i%2,
+                "Existing Customer Discount (%)": EXISTING_CUSTOMER_DISCOUNT[i%2],
                 "Discount Type": 0,
                 "Existing Customer Discount Calculated": "Yes" if i%2 else "No",
                 "sumAssured": int(10.5 * ann_prem),
@@ -2011,7 +2011,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             # annualized_premium: invalid (below threshold)
             neg_ann_prem = random.randint(1000, max(1000, _pv_min - 2))
             neg_discount_info = {
-                "Existing Customer Discount (%)": i%2,
+                "Existing Customer Discount (%)": EXISTING_CUSTOMER_DISCOUNT[i%2],
                 "Discount Type": 0,
                 "Existing Customer Discount Calculated": "Yes" if i%2 else "No",
                 "sumAssured": int(10.5 * neg_ann_prem),

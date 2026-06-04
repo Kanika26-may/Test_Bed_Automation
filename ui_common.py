@@ -3608,7 +3608,7 @@ def render_plan_ui(plan_type, display_name_default=None):
             options=[
                 "Apply Same Count to All Epics",
                 "Set Individual Counts for Each Epic",
-            ],
+            ] if plan_type != "saving plan" else ["Apply Same Count to All Epics"],
             index=0,
             key="count_mode_selector",
         )
