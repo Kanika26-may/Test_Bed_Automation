@@ -616,14 +616,14 @@ def build_child_fields(child_age=None, child_gender=None, current_year=None):
         child_age = random.randint(CHILD_AGE_RANGE[0], CHILD_AGE_RANGE[1])
     if child_gender is None:
         child_gender = random.choice(GENDER)
-    child_birthdate = f"01/Jan/{current_year - int(child_age)}"
+    child_birthdate = f"25/May/{current_year - int(child_age)}"
     return child_birthdate, child_age, child_gender
 
 
 def build_deferment_period(valid=True):
     if valid:
         return random.randint(DEFERMENT_PERIOD_RANGE[0], DEFERMENT_PERIOD_RANGE[1])
-    return random.choice([DEFERMENT_PERIOD_RANGE[0] - 1, DEFERMENT_PERIOD_RANGE[1] + 1])
+    return random.choice([DEFERMENT_PERIOD_RANGE[0] - 1, DEFERMENT_PERIOD_RANGE[1] + random.randint(1, 5)])
 
 
 def resolve_simple_counts(epic_counts_local, target_rule):
@@ -684,8 +684,7 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
     if bandhan_employee is None:
         bandhan_employee = random.choice(BANDHAN_EMPLOYEE_OPTIONS)
     if pro_difference_value is None:
-        pro_difference_value = ''
-    
+        pro_difference_value = '' 
 
     return {
         'Execute': EXECUTE_VALUE,
@@ -701,7 +700,7 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         'InceptionBackdays': inception_backdays,
         'policyHolderLocation': policy_loc,
         'insurerLocation': insurer_loc,
-        'LABirthdate': f"01/Jan/{birth_year}",
+        'LABirthdate': f"25/May/{birth_year}",
         'LAAge': age,
         'LAGender': gender,
         'smoking': smoking,
@@ -800,7 +799,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option = random.choice(PLAN_OPTIONS)
                 min_entry_age = _global_min_entry_age
                 max_entry_age = _get_max_entry_age_for_plan(plan_option, epic_counts)
-                positive_age = max(min_entry_age, min(max_entry_age - i, max_entry_age)) if i % 2 == 0 else min(max_entry_age, min_entry_age + i)
+                positive_age = min(min_entry_age + i, max_entry_age) if i%2 == 0 else random.randint(min_entry_age, max_entry_age)
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period, PPT_RULES=entryage_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
@@ -843,7 +842,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 min_entry_age = _global_min_entry_age
                 max_entry_age = _get_max_entry_age_for_plan(plan_option, epic_counts)
                 # negative: age below minimum entry age
-                negative_age = round(random.uniform(1, max(1, min_entry_age - 1)))
+                negative_age = min_entry_age - 1 - i if i%2 == 0 else round(random.uniform(1, max(1, min_entry_age - 1)))
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, negative_age, deferment_period=deferment_period, PPT_RULES=entryage_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
@@ -2323,11 +2322,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         target_rule = 'IncomeShieldPayoutDuration'
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
-        scenario_text = SCENARIO_MAP['IncomeShieldPayoutDuration']
+        # scenario_text = SCENARIO_MAP['IncomeShieldPayoutDuration']
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
             plan_option = random.choice(PLAN_OPTIONS)
+            if plan_option in ['CS_I', 'CS_HSI']:
+                scenario_text = "Income shield payout duration should be 0 years for CS_I and CS_HSI"
+            else:
+                scenario_text = "Income shield payout duration should be 5 or 10 years for CS_SI and CS_LSI"
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
@@ -2359,7 +2362,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                income_shield_period=random.choice(INCOME_SHIELD_VALID_PERIODS),
+                income_shield_period=random.choice(INCOME_SHIELD_VALID_PERIODS) if plan_option in ['CS_SI', 'CS_LSI'] else 0,
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
@@ -2368,6 +2371,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             plan_option = random.choice(PLAN_OPTIONS)
+            if plan_option in ['CS_I', 'CS_HSI']:
+                scenario_text = "Income shield payout duration should be 0 years for CS_I and CS_HSI"
+            else:
+                scenario_text = "Income shield payout duration should be 5 or 10 years for CS_SI and CS_LSI"
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
@@ -2660,7 +2667,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                plan_option='CS_Invalid',
+                plan_option=random.choice(['CS_HIS', 'CS_SLI', 'CS_S']),  # values outside PLAN_OPTIONS
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
@@ -2721,6 +2728,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
+            discount_info['Existing Customer Discount (%)']=random.randint(1,15)  # Invalid discount type to induce negative scenario
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
                 tuid_counter,
@@ -2809,6 +2817,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
+            discount_info['Existing Customer Discount (%)']=random.randint(1,15)  # Invalid discount type to induce negative scenario
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
                 tuid_counter,
@@ -2835,7 +2844,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                bandhan_employee=random.choice(['Unknown', '']),
+                # bandhan_employee=random.choice(['Unknown', '']),
+                existing_customer=random.choice(['Unknown', '']),
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
