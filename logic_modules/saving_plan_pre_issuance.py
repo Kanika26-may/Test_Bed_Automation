@@ -210,7 +210,7 @@ def calculate_discounts(ppt_type):
     #     tenantID = "None"
     return {
         "Existing Customer Discount (%)": discount_type,
-        "Discount Type": discount_type,
+        # "Discount Type": discount_type,
         "Existing Customer Discount Calculated": existing_customer_discount_calc,
         "sumAssured": sum_assured,
         "annualized_premium": annualized_premium,
@@ -220,6 +220,45 @@ def compute_install_premium(annualized_premium, payment_freq):
     """installPremium = annualized_premium × frequency factor."""
     factors = {1: 1.0, 2: 0.512, 3: 0.259, 4: 0.087}
     return round(annualized_premium * factors.get(payment_freq, 1.0))
+
+def get_min_boundary_annualized_premiums(min_install_premium, payment_freq):
+    factors = {
+        1: 1.0,
+        2: 0.512,
+        3: 0.259,
+        4: 0.087
+    }
+
+    factor = factors[payment_freq]
+
+    # 20% chance: exact boundary
+    if random.randint(1, 5) == 1:
+        return int(np.ceil(min_install_premium * factor))
+
+    # 80% chance: random valid value above boundary
+    random_offset = random.randrange(1000, 5000, 1000)
+    return int(np.ceil((min_install_premium + random_offset) * factor)), 
+
+def get_negative_boundary_annualized_premium(min_install_premium, payment_freq):
+    factors = {
+        1: 1.0,
+        2: 0.512,
+        3: 0.259,
+        4: 0.087
+    }
+
+    factor = factors[payment_freq]
+
+    # 20% chance: exact boundary violation
+    if random.randint(1, 5) == 1:
+        invalid_install_premium = min_install_premium - 1
+    else:
+        invalid_install_premium = (
+            min_install_premium
+            - random.randrange(1000, 5000, 1000)
+        )
+
+    return max(1, int(np.floor(invalid_install_premium * factor)))
 
 PPT_RULES = {
     "Regular Pay": {
@@ -1958,21 +1997,23 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            divisor = 12 if payment_freq == 4 else 4 if payment_freq == 3 else payment_freq
+            multiplier = 0.087 if payment_freq == 4 else 0.259 if payment_freq == 3 else 0.512 if payment_freq == 2 else 1
             scenario_text = (
-                f"Installment premium should be {(int)(_pv_min / divisor)} or above "
+                f"Installment premium should be {(int)(_pv_min * multiplier)} or above "
                 f"for {PAYMENT_FREQUENCY_STR[payment_freq]}"
             ) 
             # annualized_premium: valid (above threshold)
-            ann_prem = random.randint(_pv_min, _pv_max)
+            # ann_prem = random.randint((int)(_pv_min * multiplier), (int)(_pv_max * multiplier))
+            ann_prem = get_min_boundary_annualized_premiums(_pv_min, payment_freq)
             discount_info = {
                 "Existing Customer Discount (%)": EXISTING_CUSTOMER_DISCOUNT[i%2],
                 "Discount Type": 0,
                 "Existing Customer Discount Calculated": "Yes" if i%2 else "No",
-                "sumAssured": int(10.5 * ann_prem),
+                "sumAssured": int(10.5 * ann_prem / multiplier),
                 "annualized_premium": ann_prem,
             }
-            install_premium = compute_install_premium(ann_prem, payment_freq)
+            # install_premium = compute_install_premium(ann_prem, payment_freq)
+            install_premium = ann_prem
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2012,21 +2053,23 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            divisor = 12 if payment_freq == 4 else 4 if payment_freq == 3 else payment_freq
+            multiplier = 0.087 if payment_freq == 4 else 0.259 if payment_freq == 3 else 0.512 if payment_freq == 2 else 1
             scenario_text = (
-                f"Installment premium should be {(int)(_pv_min / divisor)} or above "
+                f"Installment premium should be {(int)(_pv_min * multiplier)} or above "
                 f"for {PAYMENT_FREQUENCY_STR[payment_freq]}"
             ) 
             # annualized_premium: invalid (below threshold)
-            neg_ann_prem = random.randint(1000, max(1000, _pv_min - 2))
+            # neg_ann_prem = random.randint(1000, max(1000, (int)(_pv_min * multiplier) - 2))
+            neg_ann_prem = get_negative_boundary_annualized_premium(_pv_min, payment_freq)
             neg_discount_info = {
                 "Existing Customer Discount (%)": EXISTING_CUSTOMER_DISCOUNT[i%2],
                 "Discount Type": 0,
                 "Existing Customer Discount Calculated": "Yes" if i%2 else "No",
-                "sumAssured": int(10.5 * neg_ann_prem),
+                "sumAssured": int(10.5 * neg_ann_prem / multiplier),
                 "annualized_premium": neg_ann_prem,
             }
-            install_premium = compute_install_premium(neg_ann_prem, payment_freq)
+            # install_premium = compute_install_premium(neg_ann_prem, payment_freq)
+            install_premium = neg_ann_prem
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
