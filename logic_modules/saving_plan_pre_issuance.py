@@ -199,7 +199,7 @@ column_order = [
 def calculate_discounts(ppt_type):
     # annualized_premium_range and sum_assured_range are stored in PPT_RULES and updated from UI
     ppt = PPT_RULES.get(ppt_type, {})
-    ann_min, ann_max = ppt.get('annualized_premium_range', (36001, 500000))
+    ann_min, ann_max = ppt.get('annualized_premium_range', (36000, 500000))
     annualized_premium = random.randint(ann_min, ann_max)
     sum_assured = int(10.5 * annualized_premium)
     discount_type = random.choice(EXISTING_CUSTOMER_DISCOUNT)
@@ -294,7 +294,7 @@ def get_out_of_range_coverage(ppt_name, age, deferment_period=None, PPT_RULES=PP
     charge_year = resolve_charge_year(age, rule, deferment_period)
     coverage_min, coverage_max = rule['coverage_year_range'](age)
     # Force an out-of-range coverage year
-    coverage_year = coverage_max + 1 if not random.choice([True, False]) else coverage_min - 1
+    coverage_year = coverage_max + 1 + random.randint(0, 2) if not random.choice([True, False]) else coverage_min - 1 - random.randint(0, 2)
     if deferment_period is not None:
         charge_year = coverage_year - deferment_period
     maturity_year = rule['maturity_year'](age, coverage_year)
@@ -315,15 +315,15 @@ def get_out_of_range_charge_year(ppt_name, age, deferment_period=None, PPT_RULES
     valid_years = rule.get('valid_charge_years')
     if valid_years:
         # Generate a value outside the discrete valid set (below min or above max)
-        charge_year_out = min(valid_years) - 1 if random.choice([True, False]) else max(valid_years) + 1
-    else:
-        charge_year_range = rule.get('charge_year_range')
-        if not charge_year_range:
-            charge_year = rule.get('charge_year_override', rule['charge_year'](age))
-            charge_year_out = charge_year - 1 if random.choice([True, False]) else charge_year + 1
-        else:
-            min_charge, max_charge = charge_year_range
-            charge_year_out = min_charge - 1 if random.choice([True, False]) else max_charge + 1
+        charge_year_out = min(valid_years) - 1 - random.randint(0, 2) if random.choice([True, False]) else max(valid_years) + 1 + random.randint(0, 2)
+    # else:
+    #     charge_year_range = rule.get('charge_year_range')
+    #     if not charge_year_range:
+    #         charge_year = rule.get('charge_year_override', rule['charge_year'](age))
+    #         charge_year_out = charge_year - 1 if random.choice([True, False]) else charge_year + 1
+    #     else:
+    #         min_charge, max_charge = charge_year_range
+    #         charge_year_out = min_charge - 1 if random.choice([True, False]) else max_charge + 1
     coverage_min, coverage_max = rule['coverage_year_range'](age)
     if deferment_period is not None:
         coverage_year = charge_year_out + deferment_period
@@ -445,10 +445,10 @@ def apply_premium_validation_overrides(epic_counts_local):
     max_pv = conf.get('max_val')
     if min_pv is not None or max_pv is not None:
         ppt = PPT_RULES.get('Regular Pay', {})
-        cur_min, cur_max = ppt.get('annualized_premium_range', (36001, 500000))
+        cur_min, cur_max = ppt.get('annualized_premium_range', (36000, 500000))
         # min must be strictly above the threshold (annualized premium > min_val)
         PPT_RULES['Regular Pay']['annualized_premium_range'] = (
-            int(min_pv) + 1 if min_pv is not None else cur_min,
+            int(min_pv)  if min_pv is not None else cur_min,
             int(max_pv) if max_pv is not None else cur_max,
         )
 
@@ -1948,7 +1948,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         ppt_name = "Regular Pay"
         # annualized_premium_range is already updated from UI by apply_premium_validation_overrides
         _pv_min, _pv_max = PPT_RULES[ppt_name].get('annualized_premium_range', (36000, 500000))
-        scenario_text = f"Installment premium should be {_pv_min} or above"
+        
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1958,6 +1958,11 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
+            divisor = 12 if payment_freq == 4 else 4 if payment_freq == 3 else payment_freq
+            scenario_text = (
+                f"Installment premium should be {(int)(_pv_min / divisor)} or above "
+                f"for {PAYMENT_FREQUENCY_STR[payment_freq]}"
+            ) 
             # annualized_premium: valid (above threshold)
             ann_prem = random.randint(_pv_min, _pv_max)
             discount_info = {
@@ -2007,6 +2012,11 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
+            divisor = 12 if payment_freq == 4 else 4 if payment_freq == 3 else payment_freq
+            scenario_text = (
+                f"Installment premium should be {(int)(_pv_min / divisor)} or above "
+                f"for {PAYMENT_FREQUENCY_STR[payment_freq]}"
+            ) 
             # annualized_premium: invalid (below threshold)
             neg_ann_prem = random.randint(1000, max(1000, _pv_min - 2))
             neg_discount_info = {
@@ -2667,7 +2677,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                plan_option=random.choice(['CS_HIS', 'CS_SLI', 'CS_S']),  # values outside PLAN_OPTIONS
+                plan_option=random.choice(['CS_HIS', 'CS_SLI', 'CS_S','']),  # values outside PLAN_OPTIONS
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})
