@@ -15,7 +15,7 @@ import logging
 import pandas as pd
 import random 
 import numpy as np
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 import copy
 import traceback
 
@@ -237,7 +237,7 @@ def get_min_boundary_annualized_premiums(min_install_premium, payment_freq):
 
     # 80% chance: random valid value above boundary
     random_offset = random.randrange(1000, 5000, 1000)
-    return int(np.ceil((min_install_premium + random_offset) * factor)), 
+    return int(np.ceil((min_install_premium + random_offset) * factor))
 
 def get_negative_boundary_annualized_premium(min_install_premium, payment_freq):
     factors = {
@@ -880,8 +880,22 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option = random.choice(PLAN_OPTIONS)
                 min_entry_age = _global_min_entry_age
                 max_entry_age = _get_max_entry_age_for_plan(plan_option, epic_counts)
-                # negative: age below minimum entry age
-                negative_age = min_entry_age - 1 - i if i%2 == 0 else round(random.uniform(1, max(1, min_entry_age - 1)))
+
+                # i==0: boundary case — DOB is exactly 1 day after the cutoff so the
+                # person is (min_entry_age - 1) years + 11 months + 30 days on inception date
+                boundary_dob_str = None
+                if i == 0:
+                    inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                    try:
+                        cutoff_dob = inception_dt.replace(year=inception_dt.year - min_entry_age)
+                    except ValueError:
+                        cutoff_dob = inception_dt.replace(year=inception_dt.year - min_entry_age, day=28)
+                    boundary_dob_dt = cutoff_dob + timedelta(days=1)
+                    boundary_dob_str = boundary_dob_dt.strftime("%d/%b/%Y")
+                    negative_age = min_entry_age - 1
+                else:
+                    negative_age = min_entry_age - 1 - i if i % 2 == 0 else round(random.uniform(1, max(1, min_entry_age - 1)))
+
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, negative_age, deferment_period=deferment_period, PPT_RULES=entryage_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
@@ -914,6 +928,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
+                if boundary_dob_str:
+                    common_row['LABirthdate'] = boundary_dob_str
                 scenarios.append({**common_data, **common_row})
 
     # --- EPIC: PolicyTerm ---
@@ -1071,9 +1087,19 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_min_entry_age, plan_max_entry_age = get_entry_age_range_for_plan_option(plan_option)
                 min_maturity_age = _global_min_maturity_age
                 max_maturity_age = _get_max_maturity_age_for_plan(plan_option, epic_counts)
-                age = random.randint(plan_min_entry_age, plan_max_entry_age)
-                deferment_period = build_deferment_period(valid=True)
-                charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+                if i == 0:
+                    # Boundary row: force maturity_year == min_maturity_age exactly
+                    charge_year = min(PPT_VALID_CHARGE_YEARS)          # 8
+                    deferment_period = DEFERMENT_PERIOD_RANGE[0]        # 1
+                    age = max(plan_min_entry_age,
+                              min_maturity_age - charge_year - deferment_period)
+                    age = min(age, plan_max_entry_age)
+                    coverage_year = charge_year + deferment_period
+                    maturity_year = age + coverage_year
+                else:
+                    age = random.randint(plan_min_entry_age, plan_max_entry_age)
+                    deferment_period = build_deferment_period(valid=True)
+                    charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
 
