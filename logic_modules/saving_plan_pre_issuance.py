@@ -3318,7 +3318,9 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
-            neg_assured_sum = min_sum - 1000
+            neg_assured_sum = min_sum - random.randrange(1000, 5000, 1000)  # value just below minimum       
+            annualized_premium=(neg_assured_sum / 10.5)  # simplified assumption for premium calculation to create a realistic negative scenario
+            discount_info['annualized_premium'] = annualized_premium
             message = SCENARIO_MAP['SumAssuredValidation'](ppt_name, min_sum=min_sum)
             common_row = build_common_row(
                 tuid_counter,
