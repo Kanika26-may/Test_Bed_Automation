@@ -200,7 +200,7 @@ def calculate_discounts(ppt_type):
     # annualized_premium_range and sum_assured_range are stored in PPT_RULES and updated from UI
     ppt = PPT_RULES.get(ppt_type, {})
     ann_min, ann_max = ppt.get('annualized_premium_range', (36000, 500000))
-    annualized_premium = random.randint(ann_min, ann_max)
+    annualized_premium = random.randrange(ann_min, ann_max,100)  # Generate a random annualized premium within the defined range, rounded to nearest 100
     sum_assured = int(10.5 * annualized_premium)
     discount_type = random.choice(EXISTING_CUSTOMER_DISCOUNT)
     existing_customer_discount_calc = "Yes" if discount_type > 0 else "No"
@@ -1212,7 +1212,18 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            age = build_case_age(min_entry_age, max_entry_age, i)
+            if i == 0:
+                # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                try:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
+                except ValueError:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                age = max_entry_age
+            else:
+                boundary_dob_str = None
+                age = build_case_age(min_entry_age, max_entry_age, i)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -1245,6 +1256,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
+            if boundary_dob_str:
+                common_row['LABirthdate'] = boundary_dob_str
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
@@ -1298,7 +1311,18 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            age = build_case_age(min_entry_age, max_entry_age, i)
+            if i == 0:
+                # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                try:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
+                except ValueError:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                age = max_entry_age
+            else:
+                boundary_dob_str = None
+                age = build_case_age(min_entry_age, max_entry_age, i)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -1331,6 +1355,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
+            if boundary_dob_str:
+                common_row['LABirthdate'] = boundary_dob_str
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
@@ -1384,7 +1410,18 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            age = build_case_age(min_entry_age, max_entry_age, i)
+            if i == 0:
+                # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                try:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
+                except ValueError:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                age = max_entry_age
+            else:
+                boundary_dob_str = None
+                age = build_case_age(min_entry_age, max_entry_age, i)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -1417,6 +1454,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
+            if boundary_dob_str:
+                common_row['LABirthdate'] = boundary_dob_str
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
@@ -1470,7 +1509,18 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
-            age = build_case_age(min_entry_age, max_entry_age, i)
+            if i == 0:
+                # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                try:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
+                except ValueError:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                age = max_entry_age
+            else:
+                boundary_dob_str = None
+                age = build_case_age(min_entry_age, max_entry_age, i)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -1503,6 +1553,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
+            if boundary_dob_str:
+                common_row['LABirthdate'] = boundary_dob_str
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
@@ -1555,7 +1607,18 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             plan_option = random.choice(PLAN_OPTIONS)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
-            child_age = random.randint(child_min, child_max)
+            if i == 0:
+                # Boundary: child is exactly child_max years 11 months 30 days on inception
+                child_age = child_max
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                try:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - child_max - 1)
+                except ValueError:
+                    _cutoff = inception_dt.replace(year=inception_dt.year - child_max - 1, day=28)
+                boundary_child_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+            else:
+                child_age = random.randint(child_min, child_max)
+                boundary_child_dob_str = None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -1589,6 +1652,8 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
+            if boundary_child_dob_str:
+                common_row['Child Birthdate'] = boundary_child_dob_str
             scenarios.append({**common_data, **common_row})
         for i in range(neg_count):
             tuid_counter += 1
