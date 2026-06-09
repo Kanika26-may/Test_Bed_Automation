@@ -2235,6 +2235,7 @@ def render_base_plan_epics(
                         "PremiumPayingTerm",
                         "IncomeShieldPayoutDuration",
                         "AdvanceFeatureOption",
+                        "CommissionRate"
                     ]:
                         is_selected = st.checkbox(
                             epic_desc,
