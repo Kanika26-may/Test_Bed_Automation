@@ -371,7 +371,7 @@ def get_out_of_range_charge_year(ppt_name, age, deferment_period=None, PPT_RULES
     maturity_year = rule['maturity_year'](age, coverage_year)
     return charge_year_out, coverage_year, maturity_year
 
-def get_out_of_range_maturity_year_for_range(ppt_name, age, maturity_min, maturity_max, deferment_period=None, force_above=None, PPT_RULES=PPT_RULES):
+def get_out_of_range_maturity_year_for_range(index,ppt_name, age, maturity_min, maturity_max, deferment_period=None, force_above=None, PPT_RULES=PPT_RULES):
     """Generate an out-of-range maturity age (outside [maturity_min, maturity_max]).
 
     The resulting maturity age may fall below the minimum or above the maximum
@@ -387,10 +387,16 @@ def get_out_of_range_maturity_year_for_range(ppt_name, age, maturity_min, maturi
     go_above = force_above if force_above is not None else random.choice([True, False])
 
     if go_above:
-        coverage_year = maturity_max - age + random.randint(1, 5)
+        if index == 0:
+            coverage_year = maturity_max - age + 1
+        else:     
+            coverage_year = maturity_max - age + random.randint(1, 5)
     else:
         # Aim for a maturity age below the minimum while keeping coverage_year >= 0.
-        coverage_year = maturity_min - age - random.randint(1, 5)
+        if index == 0:
+            coverage_year = maturity_min - age - 1
+        else:
+            coverage_year = maturity_min - age - random.randint(1, 5)
 
     # No age/term value may be negative.
     if coverage_year < 0:
@@ -643,7 +649,10 @@ def build_case_age(min_age, max_age, iteration_index):
 
 def build_entry_age_negative(min_age, max_age, iteration_index, ppt_name):
     # if iteration_index % 2 == 0:
-    negative_age = round(random.uniform(max_age + 1, max_age + 10))
+    if iteration_index == 0:
+        negative_age=max_age + 1
+    else:
+        negative_age = round(random.uniform(max_age + 1, max_age + 10))
     # else:
     #     negative_age = round(random.uniform(1, min_age - 1))
     return negative_age
@@ -1147,6 +1156,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 age = random.randint(plan_min_entry_age, neg_age_upper)
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year, min_maturity_age, max_maturity_age = get_out_of_range_maturity_year_for_range(
+                    i,
                     ppt_name,
                     age,
                     plan_min_maturity_age,
@@ -1641,9 +1651,19 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            if i == 0:
+                # Upper boundary: force maturity_year == maturity_max exactly
+                charge_year = max(PPT_VALID_CHARGE_YEARS)            # 12
+                deferment_period = DEFERMENT_PERIOD_RANGE[1]          # 5
+                age = min(max_entry_age,
+                          maturity_max - charge_year - deferment_period)
+                age = max(age, min_entry_age)
+                coverage_year = charge_year + deferment_period
+                maturity_year = age + coverage_year
+            else:
+                age = random.randint(min_entry_age, max_entry_age)
+                deferment_period = build_deferment_period(valid=True)
+                charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
@@ -1682,6 +1702,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
+                i,
                 ppt_name,
                 age,
                 maturity_min,
@@ -1736,9 +1757,19 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            if i == 0:
+                # Upper boundary: force maturity_year == maturity_max exactly
+                charge_year = max(PPT_VALID_CHARGE_YEARS)            # 12
+                deferment_period = DEFERMENT_PERIOD_RANGE[1]          # 5
+                age = min(max_entry_age,
+                          maturity_max - charge_year - deferment_period)
+                age = max(age, min_entry_age)
+                coverage_year = charge_year + deferment_period
+                maturity_year = age + coverage_year
+            else:
+                age = random.randint(min_entry_age, max_entry_age)
+                deferment_period = build_deferment_period(valid=True)
+                charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
@@ -1777,6 +1808,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
+                i,
                 ppt_name,
                 age,
                 maturity_min,
@@ -1831,9 +1863,19 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            if i == 0:
+                # Upper boundary: force maturity_year == maturity_max exactly
+                charge_year = max(PPT_VALID_CHARGE_YEARS)            # 12
+                deferment_period = DEFERMENT_PERIOD_RANGE[1]          # 5
+                age = min(max_entry_age,
+                          maturity_max - charge_year - deferment_period)
+                age = max(age, min_entry_age)
+                coverage_year = charge_year + deferment_period
+                maturity_year = age + coverage_year
+            else:
+                age = random.randint(min_entry_age, max_entry_age)
+                deferment_period = build_deferment_period(valid=True)
+                charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
@@ -1872,6 +1914,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
+                i,
                 ppt_name,
                 age,
                 maturity_min,
@@ -1926,9 +1969,19 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
-            age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=True)
-            charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
+            if i == 0:
+                # Upper boundary: force maturity_year == maturity_max exactly
+                charge_year = max(PPT_VALID_CHARGE_YEARS)            # 12
+                deferment_period = DEFERMENT_PERIOD_RANGE[1]          # 5
+                age = min(max_entry_age,
+                          maturity_max - charge_year - deferment_period)
+                age = max(age, min_entry_age)
+                coverage_year = charge_year + deferment_period
+                maturity_year = age + coverage_year
+            else:
+                age = random.randint(min_entry_age, max_entry_age)
+                deferment_period = build_deferment_period(valid=True)
+                charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY)
             common_row = build_common_row(
@@ -1967,6 +2020,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year, maturity_min, maturity_max = get_out_of_range_maturity_year_for_range(
+                i,
                 ppt_name,
                 age,
                 maturity_min,
