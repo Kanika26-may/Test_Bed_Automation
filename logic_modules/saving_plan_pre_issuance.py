@@ -199,8 +199,8 @@ column_order = [
 def calculate_discounts(ppt_type):
     # annualized_premium_range and sum_assured_range are stored in PPT_RULES and updated from UI
     ppt = PPT_RULES.get(ppt_type, {})
-    ann_min, ann_max = ppt.get('annualized_premium_range', (36000, 500000))
-    annualized_premium = random.randrange(ann_min, ann_max,100)  # Generate a random annualized premium within the defined range, rounded to nearest 100
+    ann_min, ann_max = ppt.get('annualized_premium_range', (36000, 50000))
+    annualized_premium = random.randrange(ann_min, ann_max,1000)  # Generate a random annualized premium within the defined range, rounded to nearest 1000
     sum_assured = int(10.5 * annualized_premium)
     discount_type = random.choice(EXISTING_CUSTOMER_DISCOUNT)
     existing_customer_discount_calc = "Yes" if discount_type > 0 else "No"
@@ -221,7 +221,14 @@ def compute_install_premium(annualized_premium, payment_freq):
     factors = {1: 1.0, 2: 0.512, 3: 0.259, 4: 0.087}
     return round(annualized_premium * factors.get(payment_freq, 1.0))
 
-def get_min_boundary_annualized_premiums(min_install_premium, payment_freq):
+min_boundary_generated = {
+    1: False,
+    2: False,
+    3: False,
+    4: False
+}
+
+def get_min_boundary_annualized_premiums(min_install_premium,payment_freq):
     factors = {
         1: 1.0,
         2: 0.512,
@@ -231,34 +238,49 @@ def get_min_boundary_annualized_premiums(min_install_premium, payment_freq):
 
     factor = factors[payment_freq]
 
-    # 20% chance: exact boundary
+    # Guarantee exact boundary once per payment frequency
+    if not min_boundary_generated[payment_freq]:
+        min_boundary_generated[payment_freq] = True
+        return int(np.ceil(min_install_premium * factor))
+
+    # Then continue with existing distribution
     if random.randint(1, 5) == 1:
         return int(np.ceil(min_install_premium * factor))
 
-    # 80% chance: random valid value above boundary
-    random_offset = random.randrange(1000, 5000, 1000)
-    return int(np.ceil((min_install_premium + random_offset) * factor))
+    random_offset = random.choice([1000, 2000, 3000, 4000])
 
-def get_negative_boundary_annualized_premium(min_install_premium, payment_freq):
+    return int(
+        np.ceil((min_install_premium + random_offset) * factor))
+
+boundary_generated = {
+    1: False,
+    2: False,
+    3: False,
+    4: False
+}
+
+def get_negative_boundary_annualized_premium(min_install_premium,payment_freq):
     factors = {
         1: 1.0,
         2: 0.512,
         3: 0.259,
         4: 0.087
     }
-
     factor = factors[payment_freq]
-
-    # 20% chance: exact boundary violation
-    if random.randint(1, 5) == 1:
+    # Ensure exact boundary violation occurs at least once
+    if not boundary_generated[payment_freq]:
         invalid_install_premium = min_install_premium - 1
+        boundary_generated[payment_freq] = True
     else:
-        invalid_install_premium = (
-            min_install_premium
-            - random.randrange(1000, 5000, 1000)
-        )
-
-    return max(1, int(np.floor(invalid_install_premium * factor)))
+        # 25% chance afterwards
+        if random.randint(1, 4) == 1:
+            invalid_install_premium = min_install_premium - 1
+        else:
+            invalid_install_premium = (
+                min_install_premium
+                - random.randrange(1000, 5000, 1000)
+            )
+    return max(1,int(np.floor(invalid_install_premium * factor)))
 
 PPT_RULES = {
     "Regular Pay": {
@@ -269,7 +291,7 @@ PPT_RULES = {
         "coverage_year_range": lambda age: (9, max(9, 67 - age)),  # plan max maturity age = 67
         "maturity_year": lambda age, coverage_year: age + coverage_year,
         "maturity_age_range": (27, 67),
-        "annualized_premium_range": (36000, 500000),  # valid annualized premium (>= 36000)
+        "annualized_premium_range": (36000, 50000),  # valid annualized premium (>= 36000)
         "sum_assured_range": (378000, 5000000),        # valid sum assured (>= 378000 = 10.5 × 36000)
         "plan_options": {
             'CS_I': {
@@ -490,7 +512,7 @@ def apply_premium_validation_overrides(epic_counts_local):
     max_pv = conf.get('max_val')
     if min_pv is not None or max_pv is not None:
         ppt = PPT_RULES.get('Regular Pay', {})
-        cur_min, cur_max = ppt.get('annualized_premium_range', (36000, 500000))
+        cur_min, cur_max = ppt.get('annualized_premium_range', (36000, 50000))
         # min must be strictly above the threshold (annualized premium > min_val)
         PPT_RULES['Regular Pay']['annualized_premium_range'] = (
             int(min_pv)  if min_pv is not None else cur_min,
@@ -717,7 +739,10 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
     if payout_frequency is None:
         payout_frequency = PAYOUT_FREQUENCY_DEFAULT
     if income_shield_period is None:
-        income_shield_period = INCOME_SHIELD_PERIOD_DEFAULT
+        if test_type == 'Positive':
+            income_shield_period = random.choice(INCOME_SHIELD_VALID_PERIODS) if plan_option in ['CS_SI', 'CS_LSI'] else 0
+        else:
+            income_shield_period = random.choice([4, 6, 9, 11, 12])
     if auto_debit is None:
         auto_debit = random.choice(AUTO_DEBIT_DEFAULT)
     if install_premium is None:
@@ -1608,6 +1633,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             if i == 0:
+                # Boundary: child age exactly at minimum (child_min = 0)
+                child_age = child_min
+                boundary_child_dob_str = None
+            elif i == 1:
                 # Boundary: child is exactly child_max years 11 months 30 days on inception
                 child_age = child_max
                 inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
@@ -1661,9 +1690,11 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             plan_option = random.choice(PLAN_OPTIONS)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
-            child_age = child_min - 1 if i % 2 == 0 else child_max + random.randint(1, 5)
-            if child_age < 0:
-                child_age = child_max + random.randint(1, 5)
+            if i == 0:
+                # Boundary: exactly one above child_max (e.g. 22)
+                child_age = child_max + 1
+            else:
+                child_age = child_max + random.randint(2, 5)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
@@ -2131,7 +2162,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
         # annualized_premium_range is already updated from UI by apply_premium_validation_overrides
-        _pv_min, _pv_max = PPT_RULES[ppt_name].get('annualized_premium_range', (36000, 500000))
+        _pv_min, _pv_max = PPT_RULES[ppt_name].get('annualized_premium_range', (36000, 50000))
         
         for i in range(pos_count):
             tuid_counter += 1
@@ -2604,7 +2635,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                income_shield_period=random.choice([1, 3, 7, 12]),  # values outside INCOME_SHIELD_VALID_PERIODS
+                income_shield_period=random.choice([4,6,9,11,12]),  # values outside INCOME_SHIELD_VALID_PERIODS
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )

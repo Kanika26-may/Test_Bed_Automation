@@ -728,7 +728,7 @@ PPT_CONFIGS = {
         #     "Regular Pay": (23, 85),
         # }, 
         "PremiumValidation": {
-            "Regular Pay": (36000, 20000000),
+            "Regular Pay": (36000, 50000),
         }, 
         "IncomePeriodPPT8": {
             "Regular Pay": (23, 85),
