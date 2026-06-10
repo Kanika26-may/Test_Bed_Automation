@@ -814,6 +814,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
     tuid_counter = 0
     current_year = date.today().year
     current_date_value = date.today().strftime("%d/%b/%Y")
+    PAYMENT_FREQUENCY_U = epic_counts.get('PaymentFrequency', {}).get('payment_frequency_options') or PAYMENT_FREQUENCY
 
     # print("#"*50,"\n\niTerm Elite N logic module")
     # apply overrides in-place before generation
@@ -876,7 +877,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period, PPT_RULES=entryage_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -933,7 +934,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, negative_age, deferment_period=deferment_period, PPT_RULES=entryage_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -1007,7 +1008,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 # Use coverage_year_range from PPT_RULES
                 min_policy_term, max_policy_term = policy_term_ppt_rules[ppt_name]['coverage_year_range'](age)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -1049,7 +1050,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year, coverage_min, coverage_max = get_out_of_range_coverage(ppt_name, age, deferment_period=deferment_period, PPT_RULES=policy_term_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -1135,7 +1136,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     deferment_period = build_deferment_period(valid=True)
                     charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
 
                 common_row = build_common_row(
                     tuid_counter,
@@ -1190,7 +1191,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     force_above=False  # below minimum maturity age
                 )
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -1252,7 +1253,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1291,7 +1292,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1351,7 +1352,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1390,7 +1391,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1450,7 +1451,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1489,7 +1490,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1549,7 +1550,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1588,7 +1589,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1651,7 +1652,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1698,7 +1699,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1761,7 +1762,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1807,7 +1808,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 force_above=True  # above maximum maturity age
             )
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1867,7 +1868,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1913,7 +1914,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 force_above=True  # above maximum maturity age
             )
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1973,7 +1974,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2019,7 +2020,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 force_above=True  # above maximum maturity age
             )
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2079,7 +2080,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2125,7 +2126,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 force_above=True  # above maximum maturity age
             )
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2172,7 +2173,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             multiplier = 0.087 if payment_freq == 4 else 0.259 if payment_freq == 3 else 0.512 if payment_freq == 2 else 1
             scenario_text = (
                 f"Installment premium should be {(int)(_pv_min * multiplier)} or above "
@@ -2228,7 +2229,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             multiplier = 0.087 if payment_freq == 4 else 0.259 if payment_freq == 3 else 0.512 if payment_freq == 2 else 1
             scenario_text = (
                 f"Installment premium should be {(int)(_pv_min * multiplier)} or above "
@@ -2295,7 +2296,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             coverage_year = charge_year + deferment_period
             maturity_year = age + coverage_year
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2337,7 +2338,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             coverage_year = charge_year + deferment_period
             maturity_year = age + coverage_year
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2387,7 +2388,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             coverage_year = charge_year + deferment_period
             maturity_year = age + coverage_year
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2429,7 +2430,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             coverage_year = charge_year + deferment_period
             maturity_year = age + coverage_year
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2476,7 +2477,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2515,7 +2516,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=False)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2565,7 +2566,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2609,7 +2610,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2656,7 +2657,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2696,7 +2697,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2743,7 +2744,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             advance_income_option = random.choice([True, False])
             common_row = build_common_row(
                 tuid_counter,
@@ -2784,7 +2785,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2831,7 +2832,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2870,7 +2871,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2916,7 +2917,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             existing_customer = random.choice(YES_NO_OPTIONS)
             common_row = build_common_row(
                 tuid_counter,
@@ -2958,7 +2959,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             discount_info['Existing Customer Discount (%)']=random.randint(1,15)  # Invalid discount type to induce negative scenario
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -3005,7 +3006,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             bandhan_employee = random.choice(BANDHAN_EMPLOYEE_OPTIONS)
             common_row = build_common_row(
                 tuid_counter,
@@ -3047,7 +3048,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             discount_info['Existing Customer Discount (%)']=random.randint(1,15)  # Invalid discount type to induce negative scenario
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -3084,7 +3085,6 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
     if 'PaymentFrequency' in selected_epics:
         target_rule = 'PaymentFrequency'
         counts = epic_counts.get(target_rule, {'positive': 0, 'negative': 0})
-        PAYMENT_FREQUENCY_U = epic_counts.get('PaymentFrequency', {}).get('payment_frequency_options') or PAYMENT_FREQUENCY
         # Positive Cases
         for i in range(counts.get('positive', 0)):
             tuid_counter += 1
@@ -3144,7 +3144,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            # payment_freq = random.choice(PAYMENT_FREQUENCY)
+            # payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             # invalid_freq = random.choice([6, 7]) # Invalid frequencies
             # paymentFreqStr = "invalid_freq"
             payment_freq = 5
@@ -3213,7 +3213,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period, PPT_RULES=premium_paying_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -3254,7 +3254,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 deferment_period = build_deferment_period(valid=True)
                 charge_year, coverage_year, maturity_year = get_out_of_range_charge_year(ppt_name, positive_age, deferment_period=deferment_period, PPT_RULES=premium_paying_ppt_rules)
                 discount_info = calculate_discounts(ppt_name)
-                payment_freq = random.choice(PAYMENT_FREQUENCY)
+                payment_freq = random.choice(PAYMENT_FREQUENCY_U)
                 common_row = build_common_row(
                     tuid_counter,
                     MODULE_NAME,
@@ -3306,7 +3306,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -3348,7 +3348,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             deferment_period = build_deferment_period(valid=True)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, positive_age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
-            payment_freq = random.choice(PAYMENT_FREQUENCY)
+            payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             neg_assured_sum = min_sum - random.randrange(1000, 5000, 1000)  # value just below minimum       
             annualized_premium=(neg_assured_sum / 10.5)  # simplified assumption for premium calculation to create a realistic negative scenario
             discount_info['annualized_premium'] = annualized_premium
