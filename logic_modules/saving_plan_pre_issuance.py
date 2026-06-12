@@ -39,19 +39,19 @@ PAYMENT_FREQUENCY = [1, 2, 3, 4] # Annual, Half-Yearly, Quarterly, Monthly
 PAYMENT_FREQUENCY_STR = {1: 'Annual', 2: 'Half-Yearly', 3: 'Quarterly', 4: 'Monthly'}
 
 YES_NO_OPTIONS = ['Yes', 'No']
-PLAN_OPTIONS = ['CS_I', 'CS_HSI', 'CS_SI', 'CS_LSI']
+PLAN_OPTIONS = ['CAREER_START_INCOME', 'CAREERSTART_HEALTH_SHIELD_INCOME', 'CAREERSTART_SECURE_INCOME', 'CAREERSTART_LIFE_SHIELD_INCOME']
 PLAN_OPTION_MAX_ENTRY_AGE = {
-    'CS_I': 50,
-    'CS_HSI': 45,
-    'CS_SI': 45,
-    'CS_LSI': 45,
+    'CAREER_START_INCOME': 50,
+    'CAREERSTART_HEALTH_SHIELD_INCOME': 45,
+    'CAREERSTART_SECURE_INCOME': 45,
+    'CAREERSTART_LIFE_SHIELD_INCOME': 45,
 }
 
 PLAN_OPTION_MAX_MATURITY_AGE = {
-    'CS_I': 67,
-    'CS_HSI': 62,
-    'CS_SI': 62,
-    'CS_LSI': 62,
+    'CAREER_START_INCOME': 67,
+    'CAREERSTART_HEALTH_SHIELD_INCOME': 62,
+    'CAREERSTART_SECURE_INCOME': 62,
+    'CAREERSTART_LIFE_SHIELD_INCOME': 62,
 }
 
 def get_entry_age_range_for_plan_option(plan_option, ppt_name="Regular Pay"):
@@ -109,7 +109,7 @@ BANDHAN_EMPLOYEE_OPTIONS = ['Yes', 'No']
 MODULE_NAME = "Saving Plan" 
 API_MODE_VALUE = "Base plan" 
 
-INCEPTION_DATE_VALUE = "25/May/2026" #can be changed to current date
+INCEPTION_DATE_VALUE = "2026-05-25" #can be changed to current date
 EXECUTE_VALUE = "N"
 MEDICAL_INDI = ['Y', 'N']
 CHECKING_NOTE_CREATE_VALUE = "Create"
@@ -294,21 +294,21 @@ PPT_RULES = {
         "annualized_premium_range": (36000, 50000),  # valid annualized premium (>= 36000)
         "sum_assured_range": (378000, 5000000),        # valid sum assured (>= 378000 = 10.5 × 36000)
         "plan_options": {
-            'CS_I': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_I']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_I'])
+            'CAREER_START_INCOME': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CAREER_START_INCOME']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CAREER_START_INCOME'])
             },
-            'CS_HSI': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_HSI']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_HSI'])
+            'CAREERSTART_HEALTH_SHIELD_INCOME': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CAREERSTART_HEALTH_SHIELD_INCOME']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CAREERSTART_HEALTH_SHIELD_INCOME'])
             },
-            'CS_SI': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_SI']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_SI'])
+            'CAREERSTART_SECURE_INCOME': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CAREERSTART_SECURE_INCOME']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CAREERSTART_SECURE_INCOME'])
             },
-            'CS_LSI': {
-                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CS_LSI']),
-                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CS_LSI'])
+            'CAREERSTART_LIFE_SHIELD_INCOME': {
+                'entry_age_range': (MIN_ENTRY_AGE, PLAN_OPTION_MAX_ENTRY_AGE['CAREERSTART_LIFE_SHIELD_INCOME']),
+                'maturity_age_range': (27, PLAN_OPTION_MAX_MATURITY_AGE['CAREERSTART_LIFE_SHIELD_INCOME'])
             },
         },
     },
@@ -548,10 +548,10 @@ def apply_min_entry_age_overrides(epic_counts_local):
 def apply_max_entry_age_overrides(epic_counts_local):
     """Sync MaximumEntryAgePlanOptionX UI values → PPT_RULES plan_options entry_age_range max."""
     plan_epic_map = {
-        'MaximumEntryAgePlanOption1': 'CS_I',
-        'MaximumEntryAgePlanOption2': 'CS_HSI',
-        'MaximumEntryAgePlanOption3': 'CS_SI',
-        'MaximumEntryAgePlanOption4': 'CS_LSI',
+        'MaximumEntryAgePlanOption1': 'CAREER_START_INCOME',
+        'MaximumEntryAgePlanOption2': 'CAREERSTART_HEALTH_SHIELD_INCOME',
+        'MaximumEntryAgePlanOption3': 'CAREERSTART_SECURE_INCOME',
+        'MaximumEntryAgePlanOption4': 'CAREERSTART_LIFE_SHIELD_INCOME',
     }
     ppt = PPT_RULES.get('Regular Pay', {})
     plan_opts = ppt.setdefault('plan_options', {})
@@ -585,10 +585,10 @@ def apply_min_maturity_age_overrides(epic_counts_local):
 def apply_max_maturity_age_overrides(epic_counts_local):
     """Sync MaximumMaturityAgePlanOptionX UI values → PPT_RULES plan_options maturity_age_range max."""
     plan_epic_map = {
-        'MaximumMaturityAgePlanOption1': 'CS_I',
-        'MaximumMaturityAgePlanOption2': 'CS_HSI',
-        'MaximumMaturityAgePlanOption3': 'CS_SI',
-        'MaximumMaturityAgePlanOption4': 'CS_LSI',
+        'MaximumMaturityAgePlanOption1': 'CAREER_START_INCOME',
+        'MaximumMaturityAgePlanOption2': 'CAREERSTART_HEALTH_SHIELD_INCOME',
+        'MaximumMaturityAgePlanOption3': 'CAREERSTART_SECURE_INCOME',
+        'MaximumMaturityAgePlanOption4': 'CAREERSTART_LIFE_SHIELD_INCOME',
     }
     ppt = PPT_RULES.get('Regular Pay', {})
     plan_opts = ppt.setdefault('plan_options', {})
@@ -686,7 +686,7 @@ def build_child_fields(child_age=None, child_gender=None, current_year=None):
         child_age = random.randint(CHILD_AGE_RANGE[0], CHILD_AGE_RANGE[1])
     if child_gender is None:
         child_gender = random.choice(GENDER)
-    child_birthdate = f"25/May/{current_year - int(child_age)}"
+    child_birthdate = f"{current_year - int(child_age)}-05-25"
     return child_birthdate, child_age, child_gender
 
 
@@ -712,11 +712,11 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
                      current_date_value=None, inception_backdays=None, pro_difference_value=None):
     """Return the common base row dict used across many test scenarios."""
     if current_date_value is None:
-        current_date_value = date.today().strftime("%d/%b/%Y")
+        current_date_value = date.today().strftime("%Y-%m-%d")
     if inception_backdays is None:
         try:
-            current_date_obj = datetime.strptime(current_date_value, "%d/%b/%Y")
-            inception_date_obj = datetime.strptime(inception_date, "%d/%b/%Y")
+            current_date_obj = datetime.strptime(current_date_value, "%Y-%m-%d")
+            inception_date_obj = datetime.strptime(inception_date, "%Y-%m-%d")
             inception_backdays = (current_date_obj - inception_date_obj).days
         except Exception:
             inception_backdays = 0
@@ -735,14 +735,11 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         else:  # charge_year in [10, 12]
             income_period = random.choice(INCOME_PERIOD_PPT10_12_VALID)
     if advance_income_option is None:
-        advance_income_option = random.choice(["True", "False"])
+        advance_income_option = random.choice(["Yes", "No"])
     if payout_frequency is None:
         payout_frequency = PAYOUT_FREQUENCY_DEFAULT
     if income_shield_period is None:
-        if test_type == 'Positive':
-            income_shield_period = random.choice(INCOME_SHIELD_VALID_PERIODS) if plan_option in ['CS_SI', 'CS_LSI'] else 0
-        else:
-            income_shield_period = random.choice([4, 6, 9, 11, 12])
+        income_shield_period = random.choice(INCOME_SHIELD_VALID_PERIODS) if plan_option in ['CAREERSTART_SECURE_INCOME', 'CAREERSTART_LIFE_SHIELD_INCOME'] else 0
     if auto_debit is None:
         auto_debit = random.choice(AUTO_DEBIT_DEFAULT)
     if install_premium is None:
@@ -773,7 +770,7 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         'InceptionBackdays': inception_backdays,
         'policyHolderLocation': policy_loc,
         'insurerLocation': insurer_loc,
-        'LABirthdate': f"25/May/{birth_year}",
+        'LABirthdate': f"{birth_year}-05-25",
         'LAAge': age,
         'LAGender': gender,
         'smoking': smoking,
@@ -807,13 +804,13 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
     }
 
 
-def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None, selected_epics_rider=None):
+def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None, selected_epics_rider=None, skip_testbed_load=False):
     if selected_epics is None:
         selected_epics = []
     scenarios = []
     tuid_counter = 0
     current_year = date.today().year
-    current_date_value = date.today().strftime("%d/%b/%Y")
+    current_date_value = date.today().strftime("%Y-%m-%d")
     PAYMENT_FREQUENCY_U = epic_counts.get('PaymentFrequency', {}).get('payment_frequency_options') or PAYMENT_FREQUENCY
 
     # print("#"*50,"\n\niTerm Elite N logic module")
@@ -825,14 +822,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         logging.exception('Failed to apply PPT_RULES overrides from epic_counts')
 
     common_data = {
-                'BaseEMR_extraType': 'Yes',
-                'BaseEMR_extraArith': 8,
-                'BaseEMR_extraPara': 0,
-                'BasePerMille_extraType': 'Yes',
-                'BasePerMille_extraArith': 1,
-                'BasePerMille_extraPara': 0,
+                'BaseEMR_extraType': '' if skip_testbed_load else 'EMR',
+                'BaseEMR_extraArith': 0 if skip_testbed_load else 8,
+                'BaseEMR_extraPara': random.choice([round(i * 0.25, 2) for i in range(1, 17)]) if skip_testbed_load else 0,
+                'BasePerMille_extraType': '' if skip_testbed_load else 'PER_MILE',
+                'BasePerMille_extraArith': 0 if skip_testbed_load else 1,
+                'BasePerMille_extraPara': random.choice([1, 2]) if skip_testbed_load else 0,
                 'Standard Age Proof': 'Yes',
-                'proDifference_Value': ''}
+                'proDifference_Value': ''
+                }
     
     # --- EPIC: EntryAge ---
     if 'MinimumEntryAge' in selected_epics:
@@ -920,13 +918,13 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 # person is (min_entry_age - 1) years + 11 months + 30 days on inception date
                 boundary_dob_str = None
                 if i == 0:
-                    inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                    inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%Y-%m-%d")
                     try:
                         cutoff_dob = inception_dt.replace(year=inception_dt.year - min_entry_age)
                     except ValueError:
                         cutoff_dob = inception_dt.replace(year=inception_dt.year - min_entry_age, day=28)
                     boundary_dob_dt = cutoff_dob + timedelta(days=1)
-                    boundary_dob_str = boundary_dob_dt.strftime("%d/%b/%Y")
+                    boundary_dob_str = boundary_dob_dt.strftime("%Y-%m-%d")
                     negative_age = min_entry_age - 1
                 else:
                     negative_age = min_entry_age - 1 - i if i % 2 == 0 else round(random.uniform(1, max(1, min_entry_age - 1)))
@@ -1240,12 +1238,12 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             idx = random.randint(0, 2)
             if i == 0:
                 # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
-                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%Y-%m-%d")
                 try:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
                 except ValueError:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
-                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%Y-%m-%d")
                 age = max_entry_age
             else:
                 boundary_dob_str = None
@@ -1339,12 +1337,12 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             idx = random.randint(0, 2)
             if i == 0:
                 # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
-                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%Y-%m-%d")
                 try:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
                 except ValueError:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
-                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%Y-%m-%d")
                 age = max_entry_age
             else:
                 boundary_dob_str = None
@@ -1438,12 +1436,12 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             idx = random.randint(0, 2)
             if i == 0:
                 # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
-                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%Y-%m-%d")
                 try:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
                 except ValueError:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
-                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%Y-%m-%d")
                 age = max_entry_age
             else:
                 boundary_dob_str = None
@@ -1537,12 +1535,12 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             idx = random.randint(0, 2)
             if i == 0:
                 # Boundary: LA is exactly max_entry_age years 11 months 30 days on inception
-                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%Y-%m-%d")
                 try:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1)
                 except ValueError:
                     _cutoff = inception_dt.replace(year=inception_dt.year - max_entry_age - 1, day=28)
-                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                boundary_dob_str = (_cutoff + timedelta(days=1)).strftime("%Y-%m-%d")
                 age = max_entry_age
             else:
                 boundary_dob_str = None
@@ -1640,12 +1638,12 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             elif i == 1:
                 # Boundary: child is exactly child_max years 11 months 30 days on inception
                 child_age = child_max
-                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%d/%b/%Y")
+                inception_dt = datetime.strptime(INCEPTION_DATE_VALUE, "%Y-%m-%d")
                 try:
                     _cutoff = inception_dt.replace(year=inception_dt.year - child_max - 1)
                 except ValueError:
                     _cutoff = inception_dt.replace(year=inception_dt.year - child_max - 1, day=28)
-                boundary_child_dob_str = (_cutoff + timedelta(days=1)).strftime("%d/%b/%Y")
+                boundary_child_dob_str = (_cutoff + timedelta(days=1)).strftime("%Y-%m-%d")
             else:
                 child_age = random.randint(child_min, child_max)
                 boundary_child_dob_str = None
@@ -2513,7 +2511,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             plan_option = random.choice(PLAN_OPTIONS)
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
-            deferment_period = build_deferment_period(valid=False)
+            if i == 0:
+                deferment_period = DEFERMENT_PERIOD_RANGE[1] + 1  # boundary edge case: always test 6
+            else:
+                deferment_period = build_deferment_period(valid=False)
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY_U)
@@ -2557,10 +2558,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             plan_option = random.choice(PLAN_OPTIONS)
-            if plan_option in ['CS_I', 'CS_HSI']:
-                scenario_text = "Income shield payout duration should be 0 years for CS_I and CS_HSI"
+            if plan_option in ['CAREER_START_INCOME', 'CAREERSTART_HEALTH_SHIELD_INCOME']:
+                scenario_text = "Income shield payout duration should be 0 years for CAREER_START_INCOME and CAREERSTART_HEALTH_SHIELD_INCOME"
             else:
-                scenario_text = "Income shield payout duration should be 5 or 10 years for CS_SI and CS_LSI"
+                scenario_text = "Income shield payout duration should be 5 or 10 years for CAREERSTART_SECURE_INCOME and CAREERSTART_LIFE_SHIELD_INCOME"
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
@@ -2592,7 +2593,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                income_shield_period=random.choice(INCOME_SHIELD_VALID_PERIODS) if plan_option in ['CS_SI', 'CS_LSI'] else 0,
+                income_shield_period=random.choice(INCOME_SHIELD_VALID_PERIODS) if plan_option in ['CAREERSTART_SECURE_INCOME', 'CAREERSTART_LIFE_SHIELD_INCOME'] else 0,
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
@@ -2601,10 +2602,10 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             tuid_counter += 1
             idx = random.randint(0, 2)
             plan_option = random.choice(PLAN_OPTIONS)
-            if plan_option in ['CS_I', 'CS_HSI']:
-                scenario_text = "Income shield payout duration should be 0 years for CS_I and CS_HSI"
+            if plan_option in ['CAREER_START_INCOME', 'CAREERSTART_HEALTH_SHIELD_INCOME']:
+                scenario_text = "Income shield payout duration should be 0 years for CAREER_START_INCOME and CAREERSTART_HEALTH_SHIELD_INCOME"
             else:
-                scenario_text = "Income shield payout duration should be 5 or 10 years for CS_SI and CS_LSI"
+                scenario_text = "Income shield payout duration should be 5 or 10 years for CAREERSTART_SECURE_INCOME and CAREERSTART_LIFE_SHIELD_INCOME"
             min_entry_age, max_entry_age = get_entry_age_range_for_plan_option(plan_option)
             age = random.randint(min_entry_age, max_entry_age)
             deferment_period = build_deferment_period(valid=True)
@@ -2745,7 +2746,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             charge_year, coverage_year, maturity_year = get_years(ppt_name, age, deferment_period=deferment_period)
             discount_info = calculate_discounts(ppt_name)
             payment_freq = random.choice(PAYMENT_FREQUENCY_U)
-            advance_income_option = random.choice([True, False])
+            advance_income_option = random.choice(['Yes', 'No'])
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -2822,7 +2823,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         target_rule = 'PlanOptions'
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
-        scenario_text = "Plan option should be in CS_I, CS_HSI, CS_SI, CS_LSI"
+        scenario_text = "Plan option should be in CAREER_START_INCOME, CAREERSTART_HEALTH_SHIELD_INCOME, CAREERSTART_SECURE_INCOME, CAREERSTART_LIFE_SHIELD_INCOME"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2897,7 +2898,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 discount_info,
                 idx,
                 deferment_period=deferment_period,
-                plan_option=random.choice(['CS_HIS', 'CS_SLI', 'CS_S','']),  # values outside PLAN_OPTIONS
+                plan_option=random.choice(['CAREER_INCOME', 'CAREER_INCOME_SHIELD', 'CAREER_LIFE','CAREER_PROTECT','']),  # values outside PLAN_OPTIONS
                 current_date_value=current_date_value
             )
             scenarios.append({**common_data, **common_row})

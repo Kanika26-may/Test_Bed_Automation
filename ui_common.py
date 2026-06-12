@@ -3798,6 +3798,13 @@ def render_plan_ui(plan_type, display_name_default=None):
                 key=portfolio_key,
             )
 
+        if plan_type == "saving plan":
+            st.checkbox(
+                "Generate without loading testbeds",
+                value=False,
+                key="generate_without_loading_testbeds",
+            )
+
         if st.button(
             "\U0001F680 Generate Test Cases",
             type="primary",
@@ -3884,6 +3891,11 @@ def render_plan_ui(plan_type, display_name_default=None):
                             portfolio_key = lifecycle_key(lifecycle_prefix, "portfolio_type")
                             generate_kwargs["portfolio_type"] = st.session_state.get(
                                 portfolio_key, "LIFESTYLE"
+                            )
+
+                        if plan_type == "saving plan":
+                            generate_kwargs["skip_testbed_load"] = st.session_state.get(
+                                "generate_without_loading_testbeds", False
                             )
 
                         df = logic_module.generate_test_cases(**generate_kwargs)
