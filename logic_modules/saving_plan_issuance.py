@@ -134,9 +134,9 @@ BROKERS_DATA = [
 tenant_map = {row["tenantID"]: row for row in BROKERS_DATA}
 
 COMMISSION_RATE_MAP = {
-    8:  {'MANAPPURAM': '22.50%', 'SALES-APP': '22.50%', 'BANDHANBANK': '0%'},
-    10: {'MANAPPURAM': '27.50%', 'SALES-APP': '27.50%', 'BANDHANBANK': '0%'},
-    12: {'MANAPPURAM': '30.00%', 'SALES-APP': '30.00%', 'BANDHANBANK': '0%'},
+    8:  {'MANAPPURAM': '22.50', 'SALES-APP': '22.50', 'BANDHANBANK': '22.50'},
+    10: {'MANAPPURAM': '27.50', 'SALES-APP': '27.50', 'BANDHANBANK': '27.50'},
+    12: {'MANAPPURAM': '30.00', 'SALES-APP': '30.00', 'BANDHANBANK': '30.00'},
 }
 
 
@@ -3435,7 +3435,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             broker = random.choice(BROKERS_DATA)
             commission_rate = COMMISSION_RATE_MAP.get(charge_year, {}).get(broker['tenantID'], '')
-            scenario_text = f"Commission Rate is {commission_rate} for PPT {charge_year} and Partner {broker['PartnerName']}"
+            scenario_text = f"Commission Rate should be {commission_rate} for PPT {charge_year} and Partner {broker['PartnerName']}"
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -3465,7 +3465,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 current_date_value=current_date_value
             )
             scenarios.append({
-                **common_data, **common_row,
+                **common_data, **make_emr_fields(), **common_row,
                 'AgentCode': broker['AgentCode'],
                 'PartnerName': broker['PartnerName'],
                 'AgentType': broker['AgentType'],
@@ -3485,12 +3485,12 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             payment_freq = random.choice(PAYMENT_FREQUENCY_U)
             broker = random.choice(BROKERS_DATA)
             if random.choice([True, False]):
-                neg_rate = round(random.uniform(35.01, 60.00), 2)
+                neg_rate = random.choice(['0.00','20.00','23.50','25.60','26.00'])
             else:
                 neg_rate = round(random.uniform(0.00, 19.99), 2)
-            neg_commission = f'{neg_rate}%'
+            neg_commission = f'{neg_rate}'
             expected_rate = COMMISSION_RATE_MAP.get(charge_year, {}).get(broker['tenantID'], '')
-            scenario_text = f"Commission Rate is {expected_rate} for PPT {charge_year} and Partner {broker['PartnerName']}"
+            scenario_text = f"Commission Rate should be {expected_rate} for PPT {charge_year} and Partner {broker['PartnerName']}"
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -3520,7 +3520,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 current_date_value=current_date_value
             )
             scenarios.append({
-                **common_data, **common_row,
+                **common_data, **make_emr_fields(), **common_row,
                 'AgentCode': broker['AgentCode'],
                 'PartnerName': broker['PartnerName'],
                 'AgentType': broker['AgentType'],
