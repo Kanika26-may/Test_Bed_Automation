@@ -821,13 +821,17 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         # if anything goes wrong during applying user overrides, ensure generation continues with original rules
         logging.exception('Failed to apply PPT_RULES overrides from epic_counts')
 
+    def make_emr_fields():
+        return {
+            'BaseEMR_extraType': '' if skip_testbed_load else 'EMR',
+            'BaseEMR_extraArith': 0 if skip_testbed_load else 8,
+            'BaseEMR_extraPara': 0 if skip_testbed_load else random.choice([round(i * 0.25, 2) for i in range(1, 17)]),
+            'BasePerMille_extraType': '' if skip_testbed_load else 'PER_MILE',
+            'BasePerMille_extraArith': 0 if skip_testbed_load else 1,
+            'BasePerMille_extraPara': 0 if skip_testbed_load else random.choice([1, 2]),
+        }
+
     common_data = {
-                'BaseEMR_extraType': '' if skip_testbed_load else 'EMR',
-                'BaseEMR_extraArith': 0 if skip_testbed_load else 8,
-                'BaseEMR_extraPara': random.choice([round(i * 0.25, 2) for i in range(1, 17)]) if skip_testbed_load else 0,
-                'BasePerMille_extraType': '' if skip_testbed_load else 'PER_MILE',
-                'BasePerMille_extraArith': 0 if skip_testbed_load else 1,
-                'BasePerMille_extraPara': random.choice([1, 2]) if skip_testbed_load else 0,
                 'Standard Age Proof': 'Yes',
                 }
     
@@ -903,7 +907,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
             # Negative cases for this PPT
             for i in range(neg_count):
                 tuid_counter += 1
@@ -962,7 +966,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 )
                 if boundary_dob_str:
                     common_row['LABirthdate'] = boundary_dob_str
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: PolicyTerm ---
     if 'PolicyTerm' in selected_epics:
@@ -1034,7 +1038,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
             # Negative Cases
             for i in range(neg_count):
                 tuid_counter += 1
@@ -1076,7 +1080,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaturityAge ---
     if 'MinimumMaturityAge' in selected_epics:
@@ -1163,7 +1167,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
             # Negative Cases
             for i in range(neg_count):
                 tuid_counter += 1
@@ -1217,7 +1221,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumEntryAgePlanOption1 ---
     if 'MaximumEntryAgePlanOption1' in selected_epics:
@@ -1281,7 +1285,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             )
             if boundary_dob_str:
                 common_row['LABirthdate'] = boundary_dob_str
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1318,7 +1322,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumEntryAgePlanOption2 ---
     if 'MaximumEntryAgePlanOption2' in selected_epics:
@@ -1380,7 +1384,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             )
             if boundary_dob_str:
                 common_row['LABirthdate'] = boundary_dob_str
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1417,7 +1421,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumEntryAgePlanOption3 ---
     if 'MaximumEntryAgePlanOption3' in selected_epics:
@@ -1479,7 +1483,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             )
             if boundary_dob_str:
                 common_row['LABirthdate'] = boundary_dob_str
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1516,7 +1520,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumEntryAgePlanOption4 ---
     if 'MaximumEntryAgePlanOption4' in selected_epics:
@@ -1578,7 +1582,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             )
             if boundary_dob_str:
                 common_row['LABirthdate'] = boundary_dob_str
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1615,7 +1619,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: ChildEntryAge ---
     if 'ChildEntryAge' in selected_epics:
@@ -1681,7 +1685,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             )
             if boundary_child_dob_str:
                 common_row['Child Birthdate'] = boundary_child_dob_str
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1726,7 +1730,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumMaturityAgePlanOption1 ---
     if 'MaximumMaturityAgePlanOption1' in selected_epics:
@@ -1788,7 +1792,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1834,7 +1838,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumMaturityAgePlanOption2 ---
     if 'MaximumMaturityAgePlanOption2' in selected_epics:
@@ -1894,7 +1898,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -1940,7 +1944,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumMaturityAgePlanOption3 ---
     if 'MaximumMaturityAgePlanOption3' in selected_epics:
@@ -2000,7 +2004,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2046,7 +2050,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: MaximumMaturityAgePlanOption4 ---
     if 'MaximumMaturityAgePlanOption4' in selected_epics:
@@ -2106,7 +2110,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2152,7 +2156,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: PremiumValidation ---
     if 'PremiumValidation' in selected_epics:
@@ -2217,7 +2221,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2273,7 +2277,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: IncomePeriodPPT8 ---
     if 'IncomePeriodPPT8' in selected_epics:
@@ -2323,7 +2327,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2365,7 +2369,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: IncomePeriodPPT10And12 ---
     if 'IncomePeriodPPT10And12' in selected_epics:
@@ -2415,7 +2419,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2457,7 +2461,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: DefermentPeriod ---
     if 'DefermentPeriod' in selected_epics:
@@ -2503,7 +2507,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2545,7 +2549,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: IncomeShieldPayoutDuration ---
     if 'IncomeShieldPayoutDuration' in selected_epics:
@@ -2596,7 +2600,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2640,7 +2644,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: IncomePayoutFrequency ---
     if 'IncomePayoutFrequency' in selected_epics:
@@ -2687,7 +2691,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2727,7 +2731,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: AdvanceFeatureOption ---
     if 'AdvanceFeatureOption' in selected_epics:
@@ -2775,7 +2779,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2815,7 +2819,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: PlanOptions ---
     if 'PlanOptions' in selected_epics:
@@ -2861,7 +2865,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2900,7 +2904,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=random.choice(['CAREER_INCOME', 'CAREER_INCOME_SHIELD', 'CAREER_LIFE','CAREER_PROTECT','']),  # values outside PLAN_OPTIONS
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: ExistingCustomer ---
     if 'ExistingCustomer' in selected_epics:
@@ -2948,7 +2952,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -2989,7 +2993,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: BandhanLifeEmployee ---
     if 'BandhanLifeEmployee' in selected_epics:
@@ -3037,7 +3041,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         for i in range(neg_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
@@ -3079,7 +3083,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: PaymentFrequency ---
     if 'PaymentFrequency' in selected_epics:
@@ -3131,7 +3135,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
         # Negative Cases
         for i in range(counts.get('negative', 0)):
             tuid_counter += 1
@@ -3176,7 +3180,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 plan_option=plan_option,
                 current_date_value=current_date_value
             )
-            scenarios.append({**common_data, **common_row})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: PremiumPayingTerm ---
     if 'PremiumPayingTerm' in selected_epics:
@@ -3242,7 +3246,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
             # Negative cases for this PPT
             for i in range(neg_count):
                 tuid_counter += 1
@@ -3283,7 +3287,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                     plan_option=plan_option,
                     current_date_value=current_date_value
                 )
-                scenarios.append({**common_data, **common_row})
+                scenarios.append({**common_data, **make_emr_fields(), **common_row})
 
     # --- EPIC: SumAssuredValidation ---
     if 'SumAssuredValidation' in selected_epics:
@@ -3336,7 +3340,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 current_date_value=current_date_value
             )
             extra_fields = {'sumAssured': random.randint(min_sum, max_sum)}
-            scenarios.append({**common_data, **common_row, **extra_fields})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row, **extra_fields})
 
         # Negative cases
         for i in range(neg_count):
@@ -3382,7 +3386,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 current_date_value=current_date_value
             )
             extra_fields = {'sumAssured': neg_assured_sum}
-            scenarios.append({**common_data, **common_row, **extra_fields})
+            scenarios.append({**common_data, **make_emr_fields(), **common_row, **extra_fields})
 
    
     # Convert to DataFrame
