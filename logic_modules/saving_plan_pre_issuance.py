@@ -29,7 +29,7 @@ MAX_ENTRY_AGE = 65
 PRODUCT_CODE = '138N122V01'
 
 GENDER = ['Male', 'Female']
-SMOKING = ['Smoker', 'Non Smoker']
+SMOKING = ['STANDARD', 'NON_SMOKER']
 policy_holder_location = ['MH', 'KA'] 
 insurer_location = ['MH', 'KA']
 
@@ -829,7 +829,6 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
                 'BasePerMille_extraArith': 0 if skip_testbed_load else 1,
                 'BasePerMille_extraPara': random.choice([1, 2]) if skip_testbed_load else 0,
                 'Standard Age Proof': 'Yes',
-                'proDifference_Value': ''
                 }
     
     # --- EPIC: EntryAge ---
@@ -2735,7 +2734,7 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
         target_rule = 'AdvanceFeatureOption'
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
         ppt_name = "Regular Pay"
-        scenario_text = "Advance income option should be True or False"
+        scenario_text = "Advance income option should be Yes or No"
         for i in range(pos_count):
             tuid_counter += 1
             idx = random.randint(0, 2)
