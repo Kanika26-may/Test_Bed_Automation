@@ -67,7 +67,7 @@ def _get_login_records():
     return sheet.get_all_records()
 
 
-def _log_login_activity(username):
+def _log_login_activity(username, emp_id):
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=[
@@ -77,8 +77,10 @@ def _log_login_activity(username):
     )
     client = gspread.authorize(creds)
     sheet = client.open_by_key(st.secrets["login_spreadsheet_id"]).worksheet("login_activity")
+    # row count includes header, so next login_id = number of existing rows (header + data rows so far)
+    login_id = len(sheet.get_all_values())
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sheet.append_row([username, timestamp])
+    sheet.append_row([login_id, username, emp_id, timestamp])
 
 
 def login():
@@ -94,7 +96,8 @@ def login():
                 for r in records
             )
             if valid:
-                _log_login_activity(username.strip())
+                emp_id = next((str(r.get("emp_id", "")) for r in records if str(r.get("username", "")).strip() == username.strip()), "")
+                _log_login_activity(username.strip(), emp_id)
                 st.session_state["logged_in"] = True
                 st.rerun()
             else:
