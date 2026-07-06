@@ -5,6 +5,7 @@ from io import BytesIO
 import os
 import importlib.util
 import json
+import gspread
 from logic_modules.term_plan_post_issuance import get_post_issuance_epics_for_plan
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -40,6 +41,38 @@ PLAN_LIFECYCLE_MODULE_MAP = {
 
 # Google Sheets Configuration
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+
+
+def log_app_activity(plan_type, life_cycle_stage, generate_test_cases="Yes"):
+    """Append one row to the 'app_activity' sheet (same file as 'login_activity').
+
+    Columns: login_id, username, emp_id, plan_type, life_cycle_stage,
+    generate_test_cases, timestamp. login_id/username/emp_id come from
+    session_state, set at login time, so this row matches the login_activity
+    row for the same session.
+    """
+    try:
+        creds = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=[
+                "https://spreadsheets.google.com/feeds",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(st.secrets["login_spreadsheet_id"]).worksheet("app_activity")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sheet.append_row([
+            st.session_state.get("login_id", ""),
+            st.session_state.get("username", ""),
+            st.session_state.get("emp_id", ""),
+            plan_type,
+            life_cycle_stage,
+            generate_test_cases,
+            timestamp,
+        ])
+    except Exception as e:
+        st.warning(f"Could not log app activity: {e}")
 
 
 def configure_app_shell():
@@ -3842,6 +3875,7 @@ def render_plan_ui(plan_type, display_name_default=None):
                     "epic_counts_rider", {}
                 )
                 st.session_state.post_issuance_selected_header = selected_header
+                log_app_activity(plan_type, selected_lifecycle, "Yes")
                 st.rerun()
 
         if st.session_state.generated_df is not None:

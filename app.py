@@ -116,6 +116,7 @@ def _log_login_activity(username, emp_id):
     login_id = len(sheet.get_all_values())
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sheet.append_row([login_id, username, emp_id, timestamp])
+    return login_id
 
 
 def login():
@@ -137,7 +138,12 @@ def login():
             )
             if valid:
                 emp_id = next((str(r.get("emp_id", "")) for r in records if str(r.get("username", "")).strip() == username.strip()), "")
-                _log_login_activity(username.strip(), emp_id)
+                login_id = _log_login_activity(username.strip(), emp_id)
+                # Keep these in session_state so later actions (e.g. Generate Test Cases)
+                # can log activity tagged with the same login_id for this session.
+                st.session_state["login_id"] = login_id
+                st.session_state["username"] = username.strip()
+                st.session_state["emp_id"] = emp_id
                 st.session_state["logged_in"] = True
                 st.rerun()
             else:
