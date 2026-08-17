@@ -1257,6 +1257,49 @@ def render_post_issuance_epics(
     return selected_header, selected_epics, epic_counts
 
 
+def render_saving_plan_death_claim_epics(lifecycle_key_prefix, count_mode, num_positive_global):
+    """Render the Death Claim post-issuance section for the saving plan.
+
+    Unlike the term-plan post-issuance model (FLC/Grace/Lapse/...), saving plan
+    post-issuance only has a Death Claim epic with three sub-sections: Claim
+    Accept, Claim Reject/Repudiate, and Suicide cases.
+    """
+    from logic_modules import saving_plan_post_issuance as death_claim_module
+
+    selected_epics = []
+    epic_counts = {}
+
+    st.markdown("### Death Claim")
+
+    with st.expander("Death Claim", expanded=True):
+        for subsection in death_claim_module.DEATH_CLAIM_SUBSECTIONS:
+            checkbox_key = lifecycle_key(lifecycle_key_prefix, f"post_death_claim_cb_{subsection}")
+            pos_count_key = lifecycle_key(lifecycle_key_prefix, f"post_death_claim_pos_{subsection}")
+
+            if count_mode == "Set Individual Counts for Each Epic":
+                row = st.columns([4, 2])
+                with row[0]:
+                    is_selected = st.checkbox(subsection, value=True, key=checkbox_key)
+                with row[1]:
+                    pos_count = st.number_input(
+                        f"Pos {subsection}",
+                        min_value=0,
+                        value=5,
+                        key=pos_count_key,
+                        label_visibility="collapsed",
+                        placeholder="Pos",
+                    )
+            else:
+                is_selected = st.checkbox(subsection, value=True, key=checkbox_key)
+                pos_count = num_positive_global
+
+            if is_selected:
+                selected_epics.append(subsection)
+                epic_counts[subsection] = {"positive": int(pos_count), "negative": 0}
+
+    return "Death Claim", selected_epics, epic_counts
+
+
 def render_base_plan_epics(
     logic_module,
     lifecycle_key_prefix,
@@ -3752,15 +3795,24 @@ def render_plan_ui(plan_type, display_name_default=None):
 
                 if lifecycle_name == "post issuance":
                     with base_tab:
-                        selected_header, selected_epics, epic_counts = (
-                            render_post_issuance_epics(
-                                plan_type,
-                                lifecycle_prefix,
-                                count_mode,
-                                num_positive_global,
-                                shared_lifecycle_prefix=lifecycle_prefix,
+                        if plan_type == "saving plan":
+                            selected_header, selected_epics, epic_counts = (
+                                render_saving_plan_death_claim_epics(
+                                    lifecycle_prefix,
+                                    count_mode,
+                                    num_positive_global,
+                                )
                             )
-                        )
+                        else:
+                            selected_header, selected_epics, epic_counts = (
+                                render_post_issuance_epics(
+                                    plan_type,
+                                    lifecycle_prefix,
+                                    count_mode,
+                                    num_positive_global,
+                                    shared_lifecycle_prefix=lifecycle_prefix,
+                                )
+                            )
                     if has_rider_tab:
                         with rider_tab:
                             _, selected_epics_rider, epic_counts_rider = (
