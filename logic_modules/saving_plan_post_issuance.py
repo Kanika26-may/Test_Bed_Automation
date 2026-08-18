@@ -1,3 +1,5 @@
+import calendar
+import math
 import random
 from datetime import date, timedelta
 
@@ -15,10 +17,114 @@ PRODUCT_CODE = getattr(issuance, "PRODUCT_CODE", "")
 
 HEADER_ORDER = ["Death Claim"]
 
+# Status progression used to build dod (date-of-death) / doi (date-of-intimation)
+# combinations: policy status can only move forward along this chain between
+# the death event and the intimation event (revival is handled separately).
+STATUS_ORDER = ["inforce", "grace", "lapse", "RPU"]
+
+STATUS_LABELS = {
+    "inforce": "Inforce",
+    "grace": "Grace Period",
+    "lapse": "Lapse",
+    "RPU": "Reduced Paid Up",
+}
+
+STATUS_REASON = {
+    "inforce": "NEW_ISSUE",
+    "grace": "GRACE",
+    "lapse": "LAPSED",
+    "RPU": "REDUCED_PAID_UP",
+}
+
+FREQUENCY_INTERVAL_MONTHS = {
+    "Annual": 12,
+    "Half-Yearly": 6,
+    "Quarterly": 3,
+    "Monthly": 1,
+}
+PAYMENT_FREQUENCY_CODE = {"Annual": 1, "Half-Yearly": 2, "Quarterly": 3, "Monthly": 4}
+
+CAUSE_OF_DEATH_OPTIONS = ["ACCIDENTAL", "NON_ACCIDENTAL"]
+
+INCOME_SHIELD_PLAN_OPTIONS = {"CAREERSTART_SECURE_INCOME", "CAREERSTART_LIFE_SHIELD_INCOME"}
+
+
+def _dod_doi_cases(dod_status, doi_statuses):
+    """Build (dod, doi) case tuples for one dod status against several doi statuses."""
+    return [(dod_status, doi_status) for doi_status in doi_statuses]
+
+
+# ----------------------------------------------------------------------------
+# Case catalogues per sub-section. Each case is:
+#   (checkbox_label, dod_status, doi_status, extra) where extra carries
+#   flags: is_extra_prem / is_post_revival / suicide_window ("within"/"after"/None).
+# A checkbox label may expand into several (dod, doi) rows (kept together so the
+# UI shows one checkbox but generation still walks every dod/doi combination).
+# ----------------------------------------------------------------------------
+
+def _death_matrix_cases():
+    """The base dod/doi death matrix shared by Claim Accept and Reject/Repudiate."""
+    return [
+        ("Death in-force + extra prem paids", [("inforce", "inforce")], {"extra_prem": True}),
+        ("Death in-force", _dod_doi_cases("inforce", ["inforce", "grace", "lapse", "RPU"]), {}),
+        ("Death post revival", [("inforce", "inforce")], {"post_revival": True}),
+        ("Death in grace", _dod_doi_cases("grace", ["grace", "lapse", "RPU"]), {}),
+        ("Death in lapse", _dod_doi_cases("lapse", ["lapse", "RPU"]), {}),
+        ("Death in reduced paid up", _dod_doi_cases("RPU", ["RPU"]), {}),
+    ]
+
+
+def _suicide_matrix_cases():
+    """The suicide dod/doi x within/after-1yr matrix shared by Suicide cases and
+    the suicide-flavored rows inside Reject/Repudiate."""
+    cases = [
+        ("Suicide in-force + extra prem paids (after 1yr)", [("inforce", "inforce")],
+         {"extra_prem": True, "suicide_window": "after"}),
+        ("Suicide in-force + extra prem paids (within 1yr)", [("inforce", "inforce")],
+         {"extra_prem": True, "suicide_window": "within"}),
+        ("Suicide in-force (within 1yr)", _dod_doi_cases("inforce", ["inforce", "grace", "lapse", "RPU"]),
+         {"suicide_window": "within"}),
+        ("Suicide in-force (after 1yr)", _dod_doi_cases("inforce", ["inforce", "grace", "lapse", "RPU"]),
+         {"suicide_window": "after"}),
+        ("Suicide in grace (within 1yr)", _dod_doi_cases("grace", ["grace", "lapse", "RPU"]),
+         {"suicide_window": "within"}),
+        ("Suicide in grace (after 1yr)", _dod_doi_cases("grace", ["grace", "lapse", "RPU"]),
+         {"suicide_window": "after"}),
+        ("Suicide in lapse (within 1yr)", _dod_doi_cases("lapse", ["lapse", "RPU"]),
+         {"suicide_window": "within"}),
+        ("Suicide in lapse (after 1yr)", _dod_doi_cases("lapse", ["lapse", "RPU"]),
+         {"suicide_window": "after"}),
+    ]
+    return cases
+
+
+CLAIM_ACCEPT_CASES = _death_matrix_cases()
+REJECT_REPUDIATE_CASES = _death_matrix_cases() + _suicide_matrix_cases()
+SUICIDE_CASES = _suicide_matrix_cases()
+
 DEATH_CLAIM_SUBSECTIONS = [
     "Claim Accept cases",
     "Claim Reject/Repudiate cases",
     "Suicide cases",
+]
+
+SUBSECTION_CASE_CATALOGUE = {
+    "Claim Accept cases": CLAIM_ACCEPT_CASES,
+    "Claim Reject/Repudiate cases": REJECT_REPUDIATE_CASES,
+    "Suicide cases": SUICIDE_CASES,
+}
+
+# decision fixed per sub-section; None means it's resolved per-row.
+SUBSECTION_DECISION = {
+    "Claim Accept cases": "Accept",
+    "Claim Reject/Repudiate cases": None,  # Reject / Repudiate (with/without refund)
+    "Suicide cases": "Accept",
+}
+
+REJECT_REPUDIATE_FLAVORS = [
+    "Reject (no refund)",
+    "Repudiate (with refund)",
+    "Repudiate (without refund)",
 ]
 
 POST_ISSUANCE_EPICS_BY_PLAN = {
@@ -30,19 +136,11 @@ POST_ISSUANCE_EPICS_BY_PLAN = {
 EPIC_MAP = {epic_name: epic_name for epic_name in DEATH_CLAIM_SUBSECTIONS}
 EPIC_MAP_RIDER = {}
 
-# policyReasonOnEvent -> matching Policy Status
-POLICY_REASON_STATUS_MAP = {
-    "NEW_ISSUE": "Inforce",
-    "GRACE": "Grace Period",
-    "LAPSED": "Lapse",
-    "REINSTATMENT": "Inforce",
-    "REDUCED_PAID_UP": "Reduced Paid Up",
+REASON_FOR_DEATH_BY_CAUSE = {
+    "ACCIDENTAL": "Accident",
+    "NON_ACCIDENTAL": "Natural",
+    "SUICIDE": "Suicide",
 }
-POLICY_REASONS = list(POLICY_REASON_STATUS_MAP.keys())
-
-CAUSE_OF_DEATH_OPTIONS = ["ACCIDENTAL", "NON_ACCIDENTAL"]
-
-INCOME_SHIELD_PLAN_OPTIONS = {"CAREERSTART_SECURE_INCOME", "CAREERSTART_LIFE_SHIELD_INCOME"}
 
 FIXED_VALUES = {
     "type": "DEATH",
@@ -77,20 +175,8 @@ FIXED_VALUES = {
     "Interest rate for calculating monthly income shield instalment": "6%",
 }
 
-CLAIM_DECISION_BY_SUBSECTION = {
-    "Claim Accept cases": "Accept",
-    "Claim Reject/Repudiate cases": "Reject",
-    "Suicide cases": None,  # resolved per-row (Accept / Reject)
-}
-
-REASON_FOR_DEATH_BY_CAUSE = {
-    "ACCIDENTAL": "Accident",
-    "NON_ACCIDENTAL": "Natural",
-    "SUICIDE": "Suicide",
-}
-
 column_order = [
-    "TUID", "API_Operation", "Test Scenario",
+    "TUID", "API_Operation", "Test Scenario", "Expected_Result",
     "policyNumber", "type", "dateOfIntimation", "timeOfClaimIntimation", "causeOfDeath",
     "Date of Revival", "rcd",
     "Date of Birth of Life Assured", "Gender of Life Assured",
@@ -129,96 +215,379 @@ def get_post_issuance_epics_for_plan(plan_type):
     return POST_ISSUANCE_EPICS_BY_PLAN.get(plan_type, {})
 
 
+def get_case_catalogue(subsection):
+    """Return the list of (checkbox_label, dod_doi_pairs, extra) cases for a sub-section."""
+    return SUBSECTION_CASE_CATALOGUE.get(subsection, [])
+
+
 # ============================================================================
-# Scenario text
+# Date utilities
 # ============================================================================
-
-SCENARIO_TEXT_MAP = {
-    "Claim Accept cases": "To verify Death Claim is Accepted for cause of death: {cause}, policy status/reason on event: {reason} ({status})",
-    "Claim Reject/Repudiate cases": "To verify Death Claim is {decision} for cause of death: {cause}, policy status/reason on event: {reason} ({status})",
-    "Suicide cases": "To verify Death Claim ({decision}) for Suicide, policy status/reason on event: {reason} ({status})",
-}
-
-EXPECTED_RESULT_MAP = {
-    "Claim Accept cases": "Death Claim should be Accepted. Claim amount should be correctly computed and payable benefits, premiums paid and outstanding amounts should reflect correctly against the policy.",
-    "Claim Reject/Repudiate cases": "Death Claim should be Rejected/Repudiated as per policy status/reason on event. No claim payout should be processed.",
-    "Suicide cases": "Death Claim (Suicide) decision should be correctly evaluated (Accept/Reject) as per policy terms and policy status/reason on event.",
-}
-
 
 def _format_date(value):
     """Format date object to DD/MM/YYYY string."""
     return value.strftime("%d/%m/%Y")
 
 
+def _add_months(base_date, month_delta):
+    """Add months to a date, clamping day to the target month's length."""
+    target_month_index = (base_date.month - 1) + month_delta
+    target_year = base_date.year + target_month_index // 12
+    target_month = (target_month_index % 12) + 1
+    target_day = min(base_date.day, calendar.monthrange(target_year, target_month)[1])
+    return date(target_year, target_month, target_day)
+
+
 def _random_policy_number():
     """Generate a random policy-number-like identifier, e.g. ALI0QAC92579805."""
-    letters = "".join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=3))
-    mid = "0" + "".join(random.choices("ABCDEFGHIJKLMNOPQRSTUVWXYZ", k=2))
-    digits = "".join(random.choices("0123456789", k=8))
-    return f"{letters}{mid}{digits}"
+    prefix_letters = "ALI0QAC00"
+    digits = "".join(random.choices("0123456789", k=4))
+    return f"{prefix_letters}{digits}"
 
 
-def _frequency_interval_months(payment_freq_label):
-    mapping = {
-        "Annual": 12,
-        "Half-Yearly": 6,
-        "Quarterly": 3,
-        "Monthly": 1,
-    }
-    return mapping.get(payment_freq_label, 12)
+# ============================================================================
+# Date engine
+# ============================================================================
+# All date placement is done in integer day-offsets from RCD first (so every
+# ordering/window constraint is checked with exact arithmetic), and only
+# converted to real calendar dates -- via _add_months for premium-installment
+# dates -- at the very end. RCD is fixed comfortably far in the past
+# (RCD_YEARS_BACK_RANGE) so the resulting chain always lands before "today"
+# with margin to spare; nothing is clamped against "today" after the fact.
+#
+# Chain: RCD -> (lapse -> Reinstatement, if applicable) -> last premium paid
+# -> due date -> date of death (dod) -> date of intimation (doi) -> date of
+# claim acceptance. doi status is always >= dod status along STATUS_ORDER;
+# the only status change between dod and doi is the grace/lapse/RPU clock
+# running out while the intimation is delayed.
+#
+# For suicide cases, "within/after 1 year" is measured against whichever
+# reference point applies: RCD for a policy that never lapsed, or the
+# Reinstatement date for a policy that lapsed and was later revived. RPU
+# requires >=12 months of premiums paid overall, which conflicts with "within
+# 1 year of RCD" for a policy that never lapsed -- so rows that need both RPU
+# eligibility and a "within 1yr" suicide window are built against a
+# Reinstatement reference: the policy had already paid 12+ months before its
+# original lapse, then reinstated, and the suicide window is re-measured from
+# that reinstatement.
+
+SUICIDE_WINDOW_DAYS = 365
+INTERVAL_DAY_APPROX = 30.44  # average calendar month length, for bounds math
+
+# RCD must never be more than 5 years before today, and is randomized between
+# 2 and 5 years back. Every case's installment/frequency ranges below are
+# sized so the full chain (RCD -> ... -> claim acceptance) provably fits
+# inside the 5-year budget with margin, for any frequency and any case
+# combination. CHAIN_MAX_SPAN_DAYS gives a conservative (never exceeded)
+# upper bound on RCD-to-acceptance length per chain "shape", used to compute
+# how close to 2 years back RCD may safely be placed for that shape while
+# still leaving CHAIN_SAFETY_MARGIN_DAYS of slack before today.
+RCD_MAX_YEARS_BACK = 5
+RCD_MIN_YEARS_BACK = 2
+CHAIN_SAFETY_MARGIN_DAYS = 30
+
+CHAIN_MAX_SPAN_DAYS = {
+    "plain": 1450,               # RCD path, no suicide window (with or without RPU)
+    "suicide_within": 700,       # RCD or reinstatement path, "within 1yr" suicide window
+    "suicide_after": 1450,       # RCD path, "after 1yr" suicide window
+    "reinstatement_within": 1200,  # reinstatement path, RPU + "within 1yr" suicide window
+    "post_revival": 1825,        # reinstatement path, plain post-revival death
+}
+
+DOD_OFFSET_RANGE = {
+    # (min, max) days added on top of due_date so the policy is in this dod_status.
+    "inforce": (0, 3),
+    "grace": (5, 15),
+    "lapse": (35, 90),
+    "RPU": (35, 90),
+}
 
 
-def _build_death_claim_dates(today_value, policy_reason, interval_months):
-    """Build the RCD -> last premium paid -> due date -> death -> intimation ->
-    (revival) -> claim acceptance date chain, all strictly before today."""
+def _installments_for_days(min_days, interval_months):
+    interval_days = interval_months * INTERVAL_DAY_APPROX
+    return max(1, math.ceil(min_days / interval_days))
 
-    rcd_years_back = random.randint(2, 10)
-    rcd_date = today_value.replace(year=today_value.year - rcd_years_back)
 
-    # Number of premiums already paid before the event, spaced by frequency.
-    max_installments = max(1, ((today_value - rcd_date).days // 30) // max(interval_months, 1))
-    installments_paid = random.randint(1, max(1, min(max_installments, 20)))
+def _add_installments(base_date, count, interval_months):
+    """Advance base_date by `count` premium intervals. Computed as a single
+    _add_months call (not a sequential loop) so every installment date is
+    independently anchored to base_date's day-of-month: a clamp in a short
+    month (e.g. 31st -> 28th in Feb) never carries over to later
+    installments that land in months long enough for the original day."""
+    return _add_months(base_date, count * interval_months)
 
-    last_premium_paid_date = rcd_date
-    for _ in range(installments_paid):
-        last_premium_paid_date = _add_months(last_premium_paid_date, interval_months)
 
-    due_date = _add_months(last_premium_paid_date, interval_months)
+def _due_date_for_installments(reference_date, installments, interval_months):
+    """due_date is one interval past the last paid installment (the next
+    premium that would fall due), computed as a single hop from
+    reference_date (not via last_paid) so it is independently anchored to
+    reference_date's day-of-month."""
+    return _add_months(reference_date, (installments + 1) * interval_months)
 
-    if policy_reason == "GRACE":
-        # Death occurs within the grace window, before the next due date.
-        death_date = due_date + timedelta(days=random.randint(1, 25))
-    elif policy_reason in ("LAPSED", "REDUCED_PAID_UP"):
-        # Death occurs well after the due date, policy already lapsed/RPU.
-        death_date = due_date + timedelta(days=random.randint(35, 120))
-    elif policy_reason == "REINSTATMENT":
-        # Policy lapsed, was revived, then death occurred post revival.
-        death_date = due_date + timedelta(days=random.randint(35, 90))
-    else:  # NEW_ISSUE
-        # Death occurs on or shortly after the due date while policy is Inforce.
-        death_date = due_date + timedelta(days=random.choice([0, 1, 2, 3]))
 
-    death_date = min(death_date, today_value - timedelta(days=3))
-    if death_date <= due_date:
-        due_date = death_date - timedelta(days=1)
+def _max_installments_within_window(reference_date, interval_months, dod_min, min_installments,
+                                    window_days, safety_margin):
+    """Walk real (calendar-correct) due_date positions forward from
+    `reference_date` and return the largest installment count N >=
+    min_installments for which due_date (the premium due after N paid
+    installments) plus the smallest possible dod_status offset still lands
+    within `window_days` of `reference_date` (minus safety_margin). Returns
+    None if even min_installments doesn't fit."""
+    limit = timedelta(days=window_days - safety_margin - dod_min)
+    best = None
+    count = min_installments
+    # Cap the walk generously; real chains never need anywhere near this many.
+    while count <= min_installments + 60:
+        candidate_due_date = _due_date_for_installments(reference_date, count, interval_months)
+        if candidate_due_date - reference_date > limit:
+            break
+        best = count
+        count += 1
+    return best
 
-    intimation_date = death_date + timedelta(days=random.randint(1, 10))
-    intimation_date = min(intimation_date, today_value - timedelta(days=2))
-    if intimation_date <= death_date:
-        intimation_date = death_date + timedelta(days=1)
 
-    revival_date = None
-    if policy_reason == "REINSTATMENT":
-        earliest_revival = due_date + timedelta(days=random.randint(31, 60))
-        revival_date = min(earliest_revival, intimation_date - timedelta(days=1))
-        if revival_date <= due_date:
-            revival_date = due_date + timedelta(days=1)
+def _choose_payment_frequency(dod_status, suicide_window, reference_date=None):
+    """Pick a payment frequency label, excluding frequencies for which a
+    "within 1yr" suicide window is mathematically infeasible against this
+    dod_status (the post-reinstatement leg always starts from 1 installment,
+    since RPU eligibility there is satisfied by the pre-lapse phase)."""
+    all_frequencies = ["Annual", "Half-Yearly", "Quarterly", "Monthly"]
+    if suicide_window != "within":
+        return random.choice(all_frequencies)
+
+    dod_min, _dod_max = DOD_OFFSET_RANGE[dod_status]
+    reference_date = reference_date or date.today()
+    feasible = [
+        label for label in all_frequencies
+        if _max_installments_within_window(
+            reference_date, FREQUENCY_INTERVAL_MONTHS[label], dod_min, 1, SUICIDE_WINDOW_DAYS, 5
+        ) is not None
+    ]
+    return random.choice(feasible or all_frequencies)
+
+
+def _pick_installments_for_suicide_window(reference_date, interval_months, dod_status, suicide_window,
+                                          min_installments):
+    """Pick an installment count N (measured from `reference_date`, the RCD or
+    Reinstatement point the suicide window applies to) such that due_date (N
+    intervals out) plus the dod_status offset satisfies the suicide
+    within/after-1yr window. Returns (installments, dod_offset_days)."""
+    dod_min, dod_max = DOD_OFFSET_RANGE[dod_status]
+
+    if suicide_window == "within":
+        max_installments = _max_installments_within_window(
+            reference_date, interval_months, dod_min, min_installments, SUICIDE_WINDOW_DAYS, 5
+        )
+        if max_installments is None:
+            # Caller should have avoided this via _choose_payment_frequency;
+            # fall back to the smallest possible chain as a safe default.
+            max_installments = min_installments
+        installments = random.randint(min_installments, max_installments)
+        due_date = _due_date_for_installments(reference_date, installments, interval_months)
+        remaining_days = (SUICIDE_WINDOW_DAYS - 5) - (due_date - reference_date).days
+        dod_offset = random.randint(dod_min, max(dod_min, min(dod_max, remaining_days)))
+        return installments, dod_offset
+
+    if suicide_window == "after":
+        safety_margin = 30
+        min_installments_for_window = _installments_for_days(SUICIDE_WINDOW_DAYS + safety_margin, interval_months)
+        installments = max(min_installments, min_installments_for_window) + random.randint(0, 1)
+        dod_offset = random.randint(dod_min, dod_max)
+        return installments, dod_offset
+
+    installments = min_installments + random.randint(0, 2)
+    dod_offset = random.randint(dod_min, dod_max)
+    return installments, dod_offset
+
+
+def _chain_shape(post_revival, suicide_window, needs_rpu_1yr):
+    """Classify which CHAIN_MAX_SPAN_DAYS bucket this case falls into."""
+    if post_revival:
+        return "post_revival"
+    if suicide_window == "within":
+        if needs_rpu_1yr:
+            return "reinstatement_within"
+        return "suicide_within"
+    if suicide_window == "after":
+        return "suicide_after"
+    return "plain"
+
+
+def _pick_rcd_date(today_value, chain_shape):
+    """Pick RCD randomly between RCD_MIN_YEARS_BACK and RCD_MAX_YEARS_BACK
+    before today, as close to the minimum as this chain shape's worst-case
+    span allows, while never exceeding RCD_MAX_YEARS_BACK back. All
+    installment-anchored dates are then built forward from this exact RCD via
+    _add_months, so dueDate (and every other installment date) always falls
+    on the same day-of-month as RCD."""
+    earliest_rcd = today_value.replace(year=today_value.year - RCD_MAX_YEARS_BACK)
+    latest_rcd = today_value.replace(year=today_value.year - RCD_MIN_YEARS_BACK) - timedelta(
+        days=CHAIN_MAX_SPAN_DAYS[chain_shape] + CHAIN_SAFETY_MARGIN_DAYS
+    )
+    if latest_rcd < earliest_rcd:
+        latest_rcd = earliest_rcd
+
+    days_of_slack = (latest_rcd - earliest_rcd).days
+    shift_days = random.randint(0, max(0, days_of_slack))
+    return earliest_rcd + timedelta(days=shift_days)
+
+
+def _build_date_chain(today_value, dod_status, doi_status,
+                       extra_prem=False, post_revival=False,
+                       suicide_window=None, needs_rpu_1yr=False):
+    """Build the full date chain, choosing the payment frequency and RCD
+    internally.
+
+    RCD is randomized between 2 and 5 years before today, picked as close to
+    2 years back as this case's worst-case chain length allows (never
+    exceeding 5 years back). Every installment-anchored date (last premium
+    paid, due date, ...) is then built forward from that exact RCD via
+    _add_months, so it always lands on the same day-of-month as RCD.
+
+    Frequency feasibility for a "within 1yr" suicide window depends on the
+    exact calendar dates involved (leap years shift the real day-count by 1),
+    so it must be checked against the actual RCD (or Reinstatement) date that
+    will be used, not an approximation.
+    """
+    is_suicide = suicide_window is not None
+    # A "within 1yr" suicide row that also needs RPU eligibility (12+ months
+    # paid) can only be satisfied by measuring the 1yr window from a
+    # Reinstatement, not from the original RCD.
+    uses_reinstatement_reference = post_revival or (
+        is_suicide and needs_rpu_1yr and suicide_window == "within"
+    )
+
+    chain_shape = _chain_shape(post_revival, suicide_window, needs_rpu_1yr)
+    rcd_date = _pick_rcd_date(today_value, chain_shape)
+
+    payment_freq_label = _choose_payment_frequency(dod_status, suicide_window, reference_date=rcd_date)
+    interval_months = FREQUENCY_INTERVAL_MONTHS[payment_freq_label]
+
+    if uses_reinstatement_reference:
+        result = _build_date_chain_via_reinstatement(
+            rcd_date, dod_status, doi_status, interval_months,
+            extra_prem=extra_prem, post_revival=post_revival,
+            suicide_window=suicide_window, needs_rpu_1yr=needs_rpu_1yr,
+        )
+    else:
+        result = _build_date_chain_via_rcd(
+            rcd_date, dod_status, doi_status, interval_months,
+            extra_prem=extra_prem, suicide_window=suicide_window, needs_rpu_1yr=needs_rpu_1yr,
+        )
+
+    result["payment_freq_label"] = payment_freq_label
+    return result
+
+
+def _build_date_chain_via_rcd(rcd_date, dod_status, doi_status, interval_months,
+                               extra_prem=False, suicide_window=None, needs_rpu_1yr=False):
+    """Build the chain forward from RCD, measuring the suicide window (if any)
+    against RCD directly."""
+    min_installments = _installments_for_days(360, interval_months) if needs_rpu_1yr else 1
+
+    installments_before_dod, dod_offset = _pick_installments_for_suicide_window(
+        rcd_date, interval_months, dod_status, suicide_window, min_installments
+    )
+
+    last_premium_paid_date = _add_installments(rcd_date, installments_before_dod, interval_months)
+    due_date = _due_date_for_installments(rcd_date, installments_before_dod, interval_months)
+    death_date = due_date + timedelta(days=dod_offset)
+
+    return _finish_date_chain(
+        rcd_date, last_premium_paid_date, due_date, death_date,
+        dod_status, doi_status, installments_before_dod,
+        extra_prem=extra_prem, revival_date=None,
+    )
+
+
+def _first_rcd_aligned_due_at_or_after(lapse_due_date, target_date, interval_months):
+    """Return the first due_date on the lapse_due_date-anchored RCD-aligned
+    premium cycle that falls strictly after `target_date` (e.g. the
+    Reinstatement date), plus how many intervals past lapse_due_date it is.
+    Each candidate is computed as a single hop from lapse_due_date (not
+    chained through prior candidates) so a month-end clamp never carries
+    over to a later, longer month."""
+    intervals = 1
+    candidate = _add_months(lapse_due_date, intervals * interval_months)
+    while candidate <= target_date:
+        intervals += 1
+        candidate = _add_months(lapse_due_date, intervals * interval_months)
+    return candidate, intervals
+
+
+def _build_date_chain_via_reinstatement(rcd_date, dod_status, doi_status, interval_months,
+                                        extra_prem=False, post_revival=False,
+                                        suicide_window=None, needs_rpu_1yr=False):
+    """Build the chain forward from RCD -> lapse -> Reinstatement, with the
+    suicide window (if any) measured from the Reinstatement date. Every
+    installment-anchored date (last premium paid, due date) stays aligned to
+    RCD's day-of-month throughout -- premiums resume on the same RCD-aligned
+    cycle after reinstatement rather than restarting from Reinstatement's own
+    (arbitrary) day."""
+    # Pre-lapse phase: enough installments paid before the original lapse so
+    # RPU eligibility (12+ months total paid) holds if required. Kept to
+    # exactly 1 installment for the plain post_revival case (due_date is
+    # always one interval past the last paid installment, so each leg here
+    # effectively costs (installments+1) intervals) so the full chain fits
+    # within the 5-year RCD budget even at Annual frequency.
+    pre_lapse_installments = _installments_for_days(360, interval_months) if needs_rpu_1yr else 1
+
+    lapse_due_date = _due_date_for_installments(rcd_date, pre_lapse_installments, interval_months)
+
+    reinstatement_date = lapse_due_date + timedelta(days=random.randint(45, 90))
+
+    # How many RCD-aligned intervals past lapse_due_date are needed to reach
+    # the first due_date after reinstatement (premiums resume on this
+    # RCD-aligned cycle, not on a new one anchored to reinstatement_date's
+    # own arbitrary day-of-month).
+    _, intervals_to_first_due = _first_rcd_aligned_due_at_or_after(
+        lapse_due_date, reinstatement_date, interval_months
+    )
+
+    if post_revival:
+        post_reinstatement_installments = 1
+        dod_offset = random.randint(0, 3)
+    else:
+        # Installment count is chosen against the real Reinstatement date (the
+        # suicide within/after-1yr window is measured from there), but the
+        # resulting due_date is then materialized on the RCD-aligned cycle
+        # below, not restarted from reinstatement_date's own day-of-month.
+        post_reinstatement_installments, dod_offset = _pick_installments_for_suicide_window(
+            reinstatement_date, interval_months, dod_status, suicide_window, 1
+        )
+
+    # due_date is `post_reinstatement_installments` intervals past the first
+    # RCD-aligned due date reachable after reinstatement, computed as a
+    # single hop from lapse_due_date (not chained from
+    # first_due_after_reinstatement) so month-end clamping never compounds.
+    total_intervals_from_lapse_due = intervals_to_first_due + post_reinstatement_installments - 1
+    due_date = _add_months(lapse_due_date, total_intervals_from_lapse_due * interval_months)
+    last_premium_paid_date = _add_months(lapse_due_date, (total_intervals_from_lapse_due - 1) * interval_months)
+    death_date = due_date + timedelta(days=dod_offset)
+
+    total_installments = pre_lapse_installments + intervals_to_first_due - 1 + post_reinstatement_installments
+
+    return _finish_date_chain(
+        rcd_date, last_premium_paid_date, due_date, death_date,
+        dod_status, doi_status, total_installments,
+        extra_prem=extra_prem, revival_date=reinstatement_date,
+    )
+
+
+def _finish_date_chain(rcd_date, last_premium_paid_date, due_date, death_date,
+                       dod_status, doi_status, installments_paid,
+                       extra_prem=False, revival_date=None):
+    # Extra-premium scenario: an autopay premium is debited *after* the date of
+    # death but on/before the date of intimation (rare, explicit case).
+    extra_premium_debit_date = None
+    if extra_prem:
+        extra_premium_debit_date = death_date + timedelta(days=random.randint(1, 5))
+
+    intimation_date = _intimation_date_for_status(death_date, dod_status, doi_status)
+    if extra_premium_debit_date is not None:
+        intimation_date = max(intimation_date, extra_premium_debit_date + timedelta(days=1))
 
     acceptance_date = intimation_date + timedelta(days=random.randint(5, 20))
-    acceptance_date = min(acceptance_date, today_value - timedelta(days=1))
-    if acceptance_date <= intimation_date:
-        acceptance_date = intimation_date + timedelta(days=1)
 
     return {
         "rcd_date": rcd_date,
@@ -228,46 +597,66 @@ def _build_death_claim_dates(today_value, policy_reason, interval_months):
         "intimation_date": intimation_date,
         "revival_date": revival_date,
         "acceptance_date": acceptance_date,
+        "extra_premium_debit_date": extra_premium_debit_date,
         "installments_paid": installments_paid,
     }
 
 
-def _add_months(base_date, month_delta):
-    """Add months to a date, clamping day to the target month's length."""
-    import calendar
+def _intimation_date_for_status(death_date, dod_status, doi_status):
+    """Place the date of intimation after death_date so the policy has reached `doi_status`."""
+    dod_index = STATUS_ORDER.index(dod_status)
+    doi_index = STATUS_ORDER.index(doi_status)
 
-    target_month_index = (base_date.month - 1) + month_delta
-    target_year = base_date.year + target_month_index // 12
-    target_month = (target_month_index % 12) + 1
-    target_day = min(base_date.day, calendar.monthrange(target_year, target_month)[1])
-    return date(target_year, target_month, target_day)
+    if doi_index == dod_index:
+        delay_days = random.randint(1, 10)
+    elif doi_index == dod_index + 1:
+        delay_days = random.randint(20, 45)
+    elif doi_index == dod_index + 2:
+        delay_days = random.randint(50, 100)
+    else:
+        delay_days = random.randint(110, 170)
+
+    return death_date + timedelta(days=delay_days)
 
 
 # ============================================================================
 # Row construction
 # ============================================================================
 
-def _resolve_claim_decision(subsection, is_suicide_row):
-    if subsection == "Suicide cases":
-        return random.choice(["Accept", "Reject"])
-    return CLAIM_DECISION_BY_SUBSECTION[subsection]
+def _resolve_reject_repudiate_flavor():
+    return random.choice(REJECT_REPUDIATE_FLAVORS)
 
 
-def _resolve_cause_of_death(subsection):
-    if subsection == "Suicide cases":
-        return "SUICIDE"
-    return random.choice(CAUSE_OF_DEATH_OPTIONS)
+def _decision_and_status_from_flavor(flavor):
+    if flavor.startswith("Reject"):
+        return "Reject", "Reject"
+    return "Repudiate", "Repudiate"
 
 
-def _build_death_claim_row(tuid_counter, subsection, policy_reason, today_value):
+def _premium_refund(flavor, total_premiums_paid):
+    if flavor == "Repudiate (with refund)":
+        return str(total_premiums_paid)
+    return "NA"
+
+
+def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi_status, extra):
+    today_value = date.today()
+
     plan_option = random.choice(issuance.PLAN_OPTIONS)
     entry_age_min, entry_age_max = issuance.get_entry_age_range_for_plan_option(plan_option)
     age = random.randint(entry_age_min, entry_age_max)
 
-    payment_freq_label = random.choice(["Annual", "Half-Yearly", "Quarterly", "Monthly"])
-    interval_months = _frequency_interval_months(payment_freq_label)
+    extra_prem = bool(extra.get("extra_prem"))
+    post_revival = bool(extra.get("post_revival"))
+    suicide_window = extra.get("suicide_window")
+    needs_rpu_1yr = "RPU" in (dod_status, doi_status)
 
-    dates = _build_death_claim_dates(today_value, policy_reason, interval_months)
+    dates = _build_date_chain(
+        today_value, dod_status, doi_status,
+        extra_prem=extra_prem, post_revival=post_revival,
+        suicide_window=suicide_window, needs_rpu_1yr=needs_rpu_1yr,
+    )
+    payment_freq_label = dates["payment_freq_label"]
 
     birth_year = today_value.year - age
     la_birthdate = f"{birth_year}-05-25"
@@ -285,65 +674,88 @@ def _build_death_claim_row(tuid_counter, subsection, policy_reason, today_value)
     else:
         income_period = random.choice(issuance.INCOME_PERIOD_PPT10_12_VALID)
 
-    payment_freq_code = {"Annual": 1, "Half-Yearly": 2, "Quarterly": 3, "Monthly": 4}[payment_freq_label]
+    payment_freq_code = PAYMENT_FREQUENCY_CODE[payment_freq_label]
     discount_info = issuance.calculate_discounts("Regular Pay")
     annualized_premium = discount_info.get("annualized_premium")
     install_premium = issuance.compute_install_premium(annualized_premium, payment_freq_code)
 
     total_premiums_paid = install_premium * dates["installments_paid"]
 
-    cause_of_death = _resolve_cause_of_death(subsection)
-    decision = _resolve_claim_decision(subsection, cause_of_death == "SUICIDE")
-    claim_status = decision if decision != "Reject" else "Reject/Repudiate"
+    is_suicide_case = subsection == "Suicide cases" or suicide_window is not None
+    cause_of_death = "SUICIDE" if is_suicide_case else random.choice(CAUSE_OF_DEATH_OPTIONS)
+    reason_for_death = REASON_FOR_DEATH_BY_CAUSE[cause_of_death]
 
-    policy_status = POLICY_REASON_STATUS_MAP[policy_reason]
+    fixed_decision = SUBSECTION_DECISION[subsection]
+    if fixed_decision is not None:
+        decision = fixed_decision
+        claim_status = decision
+        premium_refund = "NA"
+    else:
+        flavor = _resolve_reject_repudiate_flavor()
+        decision, claim_status = _decision_and_status_from_flavor(flavor)
+        premium_refund = _premium_refund(flavor, total_premiums_paid)
 
-    # Premium due-date interplay with death/intimation, per business rule.
+    # dod is used for policyReasonOnEvent/Policy Status (status as of the event).
+    policy_reason = STATUS_REASON["inforce"] if post_revival else STATUS_REASON[dod_status]
+    policy_status = STATUS_LABELS["inforce"] if post_revival else STATUS_LABELS[dod_status]
+
     premium_on_event_date = install_premium if dates["death_date"] == dates["due_date"] else 0
     excess_premium_on_event_date = (
-        install_premium
-        if dates["due_date"] < dates["death_date"] <= dates["intimation_date"]
-        else 0
+        install_premium if dates.get("extra_premium_debit_date") is not None else 0
     )
-    outstanding_premium = 0 if policy_status in ("Inforce",) else install_premium
+    outstanding_premium = 0 if policy_status == "Inforce" else install_premium
 
     income_shield_period = (
-        random.choice(issuance.INCOME_SHIELD_VALID_PERIODS)
+        str(random.choice(issuance.INCOME_SHIELD_VALID_PERIODS))
         if plan_option in INCOME_SHIELD_PLAN_OPTIONS
         else "NA"
     )
 
-    reason_for_death = REASON_FOR_DEATH_BY_CAUSE[cause_of_death]
+    suicide_window_reference = None
+    if suicide_window is not None:
+        uses_reinstatement_reference = post_revival or (needs_rpu_1yr and suicide_window == "within")
+        suicide_window_reference = "Reinstatement" if uses_reinstatement_reference else "RCD"
 
-    scenario_template = SCENARIO_TEXT_MAP[subsection]
-    scenario_text = scenario_template.format(
-        cause=cause_of_death,
-        reason=policy_reason,
-        status=policy_status,
-        decision=decision,
-    )
-    scenario_text = "\n".join([
-        scenario_text,
+    scenario_lines = [
+        f"To verify Death Claim [{case_label}] - dod:{dod_status}, doi:{doi_status}"
+        + (
+            f", suicide window: {suicide_window} 1yr of {suicide_window_reference}"
+            if suicide_window
+            else ""
+        )
+        + f" -> decision: {decision}",
         f"RCD: {_format_date(dates['rcd_date'])}",
         f"Date of last Premium Paid: {_format_date(dates['last_premium_paid_date'])}",
         f"Due date: {_format_date(dates['due_date'])}",
         f"Date of Death: {_format_date(dates['death_date'])}",
         f"Date of Intimation: {_format_date(dates['intimation_date'])}",
-    ] + (
-        [f"Date of Revival: {_format_date(dates['revival_date'])}"] if dates["revival_date"] else []
-    ) + [
-        f"Date of Claim Acceptance: {_format_date(dates['acceptance_date'])}",
-    ])
+    ]
+    if dates.get("revival_date"):
+        scenario_lines.append(f"Date of Revival: {_format_date(dates['revival_date'])}")
+    if dates.get("extra_premium_debit_date"):
+        scenario_lines.append(
+            f"Auto-pay premium debited after death, on: {_format_date(dates['extra_premium_debit_date'])}"
+        )
+    if decision == "Accept":
+        scenario_lines.append(f"Date of Claim Acceptance: {_format_date(dates['acceptance_date'])}")
+
+    scenario_text = "\n".join(scenario_lines)
+
+    expected_result = {
+        "Accept": "Death Claim should be Accepted. Claim amount should be correctly computed and payable benefits, premiums paid and outstanding amounts should reflect correctly against the policy.",
+        "Reject": "Death Claim should be Rejected as per policy status/reason on event. No claim payout or premium refund should be processed.",
+        "Repudiate": "Death Claim should be Repudiated as per policy status/reason on event/suicide clause. Premium refund should be processed only where applicable.",
+    }[decision]
 
     row = {
         "TUID": f"TC_{MODULE_NAME.replace(' ', '')}_POST_{tuid_counter:03d}",
-        "API_Operation": subsection,
+        "API_Operation": f"{subsection} - {case_label}",
         "Test Scenario": scenario_text,
-        "Expected_Result": EXPECTED_RESULT_MAP[subsection],
+        "Expected_Result": expected_result,
         "policyNumber": _random_policy_number(),
         "dateOfIntimation": _format_date(dates["intimation_date"]),
         "causeOfDeath": cause_of_death,
-        "Date of Revival": _format_date(dates["revival_date"]) if dates["revival_date"] else "",
+        "Date of Revival": _format_date(dates["revival_date"]) if dates.get("revival_date") else "",
         "rcd": _format_date(dates["rcd_date"]),
         "Date of Birth of Life Assured": la_birthdate,
         "Gender of Life Assured": la_gender,
@@ -377,7 +789,7 @@ def _build_death_claim_row(tuid_counter, subsection, policy_reason, today_value)
         "Income Shield Monthly Income Instalment (in years)": income_shield_period,
         "Date of last Premium Paid": _format_date(dates["last_premium_paid_date"]),
         "No. Of premium paid": dates["installments_paid"],
-        "Premium Refund": "NA" if decision == "Accept" else install_premium,
+        "Premium Refund": premium_refund,
         "Total Premiums Paid inclusive of Modal Loading, First Year Premium Discount, EMR Premium, Per Mille, NSAP loading & Rider premiums exclusive of Taxes till Date of Death (INR)": total_premiums_paid,
     }
     row.update(FIXED_VALUES)
@@ -390,29 +802,43 @@ def _build_death_claim_row(tuid_counter, subsection, policy_reason, today_value)
 
 def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None,
                         selected_epics_rider=None, selected_header=None, **_kwargs):
-    """Generate post-issuance Death Claim test cases for the saving plan."""
+    """Generate post-issuance Death Claim test cases for the saving plan.
+
+    epic_counts keys are "<subsection>::<case_label>" for the specific dod/doi
+    case checkboxes selected under a sub-section; each selected case contributes
+    its configured positive count, generating one row per dod/doi pair in that
+    case (so e.g. "Death in-force" with count=1 yields 4 rows: one per doi
+    status). selected_epics lists the same composite keys.
+    """
     selected_epics = selected_epics or list((epic_counts or {}).keys())
 
     if not selected_epics:
         return pd.DataFrame(columns=column_order)
 
-    today_value = date.today()
     scenarios = []
     tuid_counter = 0
 
     for subsection in DEATH_CLAIM_SUBSECTIONS:
-        if subsection not in selected_epics:
-            continue
-        counts = (epic_counts or {}).get(subsection, {})
-        positive_count = int(counts.get("positive", 0) or 0)
-        if positive_count <= 0:
-            continue
+        catalogue = {label: (pairs, extra) for label, pairs, extra in get_case_catalogue(subsection)}
+        for epic_key in selected_epics:
+            if not epic_key.startswith(f"{subsection}::"):
+                continue
+            case_label = epic_key.split("::", 1)[1]
+            if case_label not in catalogue:
+                continue
+            pairs, extra = catalogue[case_label]
+            counts = (epic_counts or {}).get(epic_key, {})
+            positive_count = int(counts.get("positive", 0) or 0)
+            if positive_count <= 0:
+                continue
 
-        for i in range(positive_count):
-            policy_reason = POLICY_REASONS[i % len(POLICY_REASONS)]
-            tuid_counter += 1
-            row = _build_death_claim_row(tuid_counter, subsection, policy_reason, today_value)
-            scenarios.append(row)
+            for _ in range(positive_count):
+                for dod_status, doi_status in pairs:
+                    tuid_counter += 1
+                    row = _build_death_claim_row(
+                        tuid_counter, subsection, case_label, dod_status, doi_status, extra
+                    )
+                    scenarios.append(row)
 
     if not scenarios:
         return pd.DataFrame(columns=column_order)

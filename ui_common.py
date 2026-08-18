@@ -1261,41 +1261,76 @@ def render_saving_plan_death_claim_epics(lifecycle_key_prefix, count_mode, num_p
     """Render the Death Claim post-issuance section for the saving plan.
 
     Unlike the term-plan post-issuance model (FLC/Grace/Lapse/...), saving plan
-    post-issuance only has a Death Claim epic with three sub-sections: Claim
-    Accept, Claim Reject/Repudiate, and Suicide cases.
+    post-issuance is a single "Death Claim" event type (radio button, so more
+    event types can be added later) with three sub-sections: Claim Accept,
+    Claim Reject/Repudiate, and Suicide cases. Each sub-section exposes its own
+    catalogue of dod/doi (date-of-death / date-of-intimation status) cases as
+    checkboxes with a positive count each.
     """
     from logic_modules import saving_plan_post_issuance as death_claim_module
+
+    event_type_key = lifecycle_key(lifecycle_key_prefix, "post_death_claim_event_type")
+    event_types = ["Death Claim"]
+    st.radio(
+        "Select a post-issuance event type:",
+        event_types,
+        key=event_type_key,
+        horizontal=True,
+        disabled=len(event_types) == 1,
+    )
 
     selected_epics = []
     epic_counts = {}
 
-    st.markdown("### Death Claim")
+    for subsection in death_claim_module.DEATH_CLAIM_SUBSECTIONS:
+        catalogue = death_claim_module.get_case_catalogue(subsection)
 
-    with st.expander("Death Claim", expanded=True):
-        for subsection in death_claim_module.DEATH_CLAIM_SUBSECTIONS:
-            checkbox_key = lifecycle_key(lifecycle_key_prefix, f"post_death_claim_cb_{subsection}")
-            pos_count_key = lifecycle_key(lifecycle_key_prefix, f"post_death_claim_pos_{subsection}")
+        select_all_key = lifecycle_key(lifecycle_key_prefix, f"post_death_claim_select_all_{subsection}")
+        select_all_prev_key = lifecycle_key(lifecycle_key_prefix, f"post_death_claim_select_all_prev_{subsection}")
+        if select_all_key not in st.session_state:
+            st.session_state[select_all_key] = True
+        if select_all_prev_key not in st.session_state:
+            st.session_state[select_all_prev_key] = st.session_state[select_all_key]
 
-            if count_mode == "Set Individual Counts for Each Epic":
-                row = st.columns([4, 2])
-                with row[0]:
-                    is_selected = st.checkbox(subsection, value=True, key=checkbox_key)
-                with row[1]:
-                    pos_count = st.number_input(
-                        f"Pos {subsection}",
-                        min_value=0,
-                        value=5,
-                        key=pos_count_key,
-                        label_visibility="collapsed",
-                        placeholder="Pos",
+        with st.expander(subsection, expanded=True):
+            select_all_state = st.checkbox("Select all", key=select_all_key)
+            if select_all_state != st.session_state[select_all_prev_key]:
+                for case_label, _pairs, _extra in catalogue:
+                    checkbox_key = lifecycle_key(
+                        lifecycle_key_prefix, f"post_death_claim_cb_{subsection}_{case_label}"
                     )
-            else:
-                is_selected = st.checkbox(subsection, value=True, key=checkbox_key)
-                pos_count = num_positive_global
+                    st.session_state[checkbox_key] = select_all_state
+            st.session_state[select_all_prev_key] = select_all_state
 
-            if is_selected:
-                selected_epics.append(subsection)
-                epic_counts[subsection] = {"positive": int(pos_count), "negative": 0}
+            for case_label, _pairs, _extra in catalogue:
+                checkbox_key = lifecycle_key(
+                    lifecycle_key_prefix, f"post_death_claim_cb_{subsection}_{case_label}"
+                )
+                pos_count_key = lifecycle_key(
+                    lifecycle_key_prefix, f"post_death_claim_pos_{subsection}_{case_label}"
+                )
+
+                if count_mode == "Set Individual Counts for Each Epic":
+                    row = st.columns([4, 2])
+                    with row[0]:
+                        is_selected = st.checkbox(case_label, value=True, key=checkbox_key)
+                    with row[1]:
+                        pos_count = st.number_input(
+                            f"Pos {subsection} {case_label}",
+                            min_value=0,
+                            value=1,
+                            key=pos_count_key,
+                            label_visibility="collapsed",
+                            placeholder="Pos",
+                        )
+                else:
+                    is_selected = st.checkbox(case_label, value=True, key=checkbox_key)
+                    pos_count = num_positive_global
+
+                if is_selected:
+                    epic_key = f"{subsection}::{case_label}"
+                    selected_epics.append(epic_key)
+                    epic_counts[epic_key] = {"positive": int(pos_count), "negative": 0}
 
     return "Death Claim", selected_epics, epic_counts
 
