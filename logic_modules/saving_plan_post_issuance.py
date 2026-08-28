@@ -357,6 +357,16 @@ def _max_installments_within_window(reference_date, interval_months, dod_min, mi
     return best
 
 
+def _max_installments_before_rpu(interval_months):
+    """Largest installment count N (paid after RCD) for which the due_date
+    that follows still falls before 12 months of premiums have been paid --
+    i.e. the policy is still grace/lapse-eligible rather than having already
+    crossed into RPU territory. For sub-annual frequencies this is > 0, so
+    several installments can legitimately be paid before the due date that
+    finally gets missed (not just the very first one)."""
+    return max(0, math.ceil(12 / interval_months) - 2)
+
+
 def _choose_payment_frequency(dod_status, suicide_window, doi_status=None, reference_date=None, freq_group_idx=0):
     """Pick a payment frequency label, excluding frequencies for which a
     "within 1yr" suicide window is mathematically infeasible against this
@@ -396,24 +406,28 @@ def _pick_installments_for_suicide_window(reference_date, interval_months, dod_s
     intervals out) plus the dod_status offset satisfies the suicide
     within/after-1yr window. Returns (installments, dod_offset_days).
 
-    dod_status "grace"/"lapse" must fall within policy year 1, so N is
-    pinned to min_installments (0, from the caller) rather than allowed to
-    grow: due_date must stay at exactly 1 interval past reference_date."""
+    dod_status "grace"/"lapse" must stay under the 12-months-paid RPU
+    threshold (_max_installments_before_rpu), otherwise the policy would go
+    to RPU instead of lapsing -- but for sub-annual frequencies several
+    installments can still legitimately be paid before the due date that
+    finally gets missed, so N is randomized up to that cap rather than
+    always pinned to min_installments (which only ever produced the very
+    first due date)."""
     dod_min, dod_max = DOD_OFFSET_RANGE[dod_status]
     pinned_to_min = dod_status in ("grace", "lapse")
+    rpu_cap = _max_installments_before_rpu(interval_months) if pinned_to_min else None
 
     if suicide_window == "within":
+        max_installments = _max_installments_within_window(
+            reference_date, interval_months, dod_min, min_installments, SUICIDE_WINDOW_DAYS, 5
+        )
+        if max_installments is None:
+            # Caller should have avoided this via _choose_payment_frequency;
+            # fall back to the smallest possible chain as a safe default.
+            max_installments = min_installments
         if pinned_to_min:
-            installments = min_installments
-        else:
-            max_installments = _max_installments_within_window(
-                reference_date, interval_months, dod_min, min_installments, SUICIDE_WINDOW_DAYS, 5
-            )
-            if max_installments is None:
-                # Caller should have avoided this via _choose_payment_frequency;
-                # fall back to the smallest possible chain as a safe default.
-                max_installments = min_installments
-            installments = random.randint(min_installments, max_installments)
+            max_installments = min(max_installments, max(min_installments, rpu_cap))
+        installments = random.randint(min_installments, max_installments)
         due_date = _due_date_for_installments(reference_date, installments, interval_months)
         remaining_days = (SUICIDE_WINDOW_DAYS - 5) - (due_date - reference_date).days
         dod_offset = random.randint(dod_min, max(dod_min, min(dod_max, remaining_days)))
@@ -426,7 +440,10 @@ def _pick_installments_for_suicide_window(reference_date, interval_months, dod_s
         dod_offset = random.randint(dod_min, dod_max)
         return installments, dod_offset
 
-    installments = min_installments if pinned_to_min else min_installments + random.randint(0, 2)
+    if pinned_to_min:
+        installments = random.randint(min_installments, max(min_installments, rpu_cap))
+    else:
+        installments = min_installments + random.randint(0, 2)
     dod_offset = random.randint(dod_min, dod_max)
     return installments, dod_offset
 
@@ -530,9 +547,10 @@ def _build_date_chain_via_rcd(rcd_date, dod_status, doi_status, interval_months,
     """Build the chain forward from RCD, measuring the suicide window (if any)
     against RCD directly."""
     if dod_status in ("grace", "lapse"):
-        # Grace/lapse must fall within policy year 1: the very first premium
-        # after RCD is the one that's missed, so due_date is only 1 interval
-        # past RCD.
+        # Grace/lapse must stay under the 12-months-paid RPU threshold; 0 is
+        # just the floor (the very first premium after RCD could be the one
+        # that's missed) -- _pick_installments_for_suicide_window randomizes
+        # up to _max_installments_before_rpu from here.
         min_installments = 0
     else:
         min_installments = _installments_for_days(360, interval_months) if needs_rpu_1yr else 1
@@ -548,8 +566,7 @@ def _build_date_chain_via_rcd(rcd_date, dod_status, doi_status, interval_months,
         # count so (installments_before_dod + 1) * interval_months < 12,
         # overriding min_installments if needed (Annual is excluded earlier
         # via _choose_payment_frequency, so this cap is always >= 0 here).
-        max_for_lapse = max(0, math.ceil(12 / interval_months) - 2)
-        installments_before_dod = min(installments_before_dod, max_for_lapse)
+        installments_before_dod = min(installments_before_dod, _max_installments_before_rpu(interval_months))
 
     last_premium_paid_date = _add_installments(rcd_date, installments_before_dod, interval_months)
     due_date = _due_date_for_installments(rcd_date, installments_before_dod, interval_months)
