@@ -337,10 +337,12 @@ PPT_RULES = {
 
 
 
-def resolve_charge_year(age, rule, deferment_period=None):
+def resolve_charge_year(age, rule, deferment_period=None, forced_charge_year=None):
     # Discrete valid charge years take priority over range logic
     valid_years = rule.get('valid_charge_years')
     if valid_years:
+        if forced_charge_year is not None and forced_charge_year in valid_years:
+            return forced_charge_year
         return random.choice(valid_years)
     charge_year_range = rule.get('charge_year_range')
     if not charge_year_range:
@@ -354,9 +356,9 @@ def resolve_charge_year(age, rule, deferment_period=None):
     return random.randint(min_charge, max_charge)
 
 
-def get_years(ppt_name, age, deferment_period=None, PPT_RULES=PPT_RULES):
+def get_years(ppt_name, age, deferment_period=None, PPT_RULES=PPT_RULES, forced_charge_year=None):
     rule = PPT_RULES.get(ppt_name)
-    charge_year = resolve_charge_year(age, rule, deferment_period)
+    charge_year = resolve_charge_year(age, rule, deferment_period, forced_charge_year=forced_charge_year)
     # Determine coverage year range
     coverage_min, coverage_max = rule['coverage_year_range'](age)
     maturity_age_max = rule.get('maturity_age_range', (27, 85))[1]

@@ -357,7 +357,7 @@ def _max_installments_within_window(reference_date, interval_months, dod_min, mi
     return best
 
 
-def _choose_payment_frequency(dod_status, suicide_window, doi_status=None, reference_date=None):
+def _choose_payment_frequency(dod_status, suicide_window, doi_status=None, reference_date=None, freq_group_idx=0):
     """Pick a payment frequency label, excluding frequencies for which a
     "within 1yr" suicide window is mathematically infeasible against this
     dod_status (the post-reinstatement leg always starts from 1 installment,
@@ -375,7 +375,7 @@ def _choose_payment_frequency(dod_status, suicide_window, doi_status=None, refer
         all_frequencies = [label for label in all_frequencies if label != "Annual"]
 
     if suicide_window != "within":
-        return random.choice(all_frequencies)
+        return all_frequencies[freq_group_idx % len(all_frequencies)]
 
     dod_min, _dod_max = DOD_OFFSET_RANGE[dod_status]
     reference_date = reference_date or date.today()
@@ -385,7 +385,8 @@ def _choose_payment_frequency(dod_status, suicide_window, doi_status=None, refer
             reference_date, FREQUENCY_INTERVAL_MONTHS[label], dod_min, 1, SUICIDE_WINDOW_DAYS, 5
         ) is not None
     ]
-    return random.choice(feasible or all_frequencies)
+    pool = feasible or all_frequencies
+    return pool[freq_group_idx % len(pool)]
 
 
 def _pick_installments_for_suicide_window(reference_date, interval_months, dod_status, suicide_window,
@@ -473,7 +474,7 @@ def _place_chain_in_time(today_value, chain_result, trial_rcd_date):
 
 def _build_date_chain(today_value, dod_status, doi_status,
                        extra_prem=False, post_revival=False,
-                       suicide_window=None, needs_rpu_1yr=False):
+                       suicide_window=None, needs_rpu_1yr=False, freq_group_idx=0):
     """Build the full date chain, choosing the payment frequency and RCD
     internally.
 
@@ -502,7 +503,8 @@ def _build_date_chain(today_value, dod_status, doi_status,
     trial_rcd_date = _trial_rcd_date(today_value)
 
     payment_freq_label = _choose_payment_frequency(
-        dod_status, suicide_window, doi_status=doi_status, reference_date=trial_rcd_date
+        dod_status, suicide_window, doi_status=doi_status, reference_date=trial_rcd_date,
+        freq_group_idx=freq_group_idx,
     )
     interval_months = FREQUENCY_INTERVAL_MONTHS[payment_freq_label]
 
@@ -739,10 +741,18 @@ def _premium_refund(flavor, total_premiums_paid):
     return "NA"
 
 
-def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi_status, extra):
+def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi_status, extra, combo_idx=0):
     today_value = date.today()
 
-    plan_option = random.choice(issuance.PLAN_OPTIONS)
+    # Deterministic Plan Option x PPT x Premium Frequency coverage: combo_idx
+    # walks a full (plan option x frequency) grid (plan option fast-changing,
+    # frequency slow-changing via freq_group_idx), while ppt_idx is offset by
+    # both indices so PPT doesn't move in lockstep with either axis. See the
+    # plan doc for the pairwise-coverage proof.
+    plan_options = issuance.PLAN_OPTIONS
+    plan_option_idx = combo_idx % len(plan_options)
+    freq_group_idx = combo_idx // len(plan_options)
+    plan_option = plan_options[plan_option_idx]
     entry_age_min, entry_age_max = issuance.get_entry_age_range_for_plan_option(plan_option)
     age = random.randint(entry_age_min, entry_age_max)
 
@@ -755,6 +765,7 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
         today_value, dod_status, doi_status,
         extra_prem=extra_prem, post_revival=post_revival,
         suicide_window=suicide_window, needs_rpu_1yr=needs_rpu_1yr,
+        freq_group_idx=freq_group_idx,
     )
     payment_freq_label = dates["payment_freq_label"]
 
@@ -765,8 +776,11 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
     child_birthdate, _child_age, child_gender = issuance.build_child_fields()
 
     deferment_period = issuance.build_deferment_period(valid=True)
+    ppt_values = issuance.PPT_RULES["Regular Pay"]["valid_charge_years"]
+    ppt_idx = (plan_option_idx + freq_group_idx) % len(ppt_values)
     charge_year, coverage_year, _maturity_year = issuance.get_years(
-        "Regular Pay", age, deferment_period=deferment_period
+        "Regular Pay", age, deferment_period=deferment_period,
+        forced_charge_year=ppt_values[ppt_idx],
     )
 
     if charge_year == 8:
@@ -938,12 +952,15 @@ def generate_test_cases(epic_counts, selected_epics=None, epic_counts_rider=None
             if positive_count <= 0:
                 continue
 
+            combo_idx = 0
             for _ in range(positive_count):
                 for dod_status, doi_status in pairs:
                     tuid_counter += 1
                     row = _build_death_claim_row(
-                        tuid_counter, subsection, case_label, dod_status, doi_status, extra
+                        tuid_counter, subsection, case_label, dod_status, doi_status, extra,
+                        combo_idx=combo_idx,
                     )
+                    combo_idx += 1
                     scenarios.append(row)
 
     if not scenarios:
