@@ -634,7 +634,12 @@ def _build_date_chain_via_reinstatement(rcd_date, dod_status, doi_status, interv
     last_premium_paid_date = _add_months(lapse_due_date, last_paid_intervals_from_lapse_due * interval_months)
     death_date = due_date + timedelta(days=dod_offset)
 
-    total_installments = pre_lapse_installments + last_paid_intervals_from_lapse_due
+    # +1 for the arrears premium that reinstatement clears (the original
+    # lapse_due_date installment): it has no calendar date of its own --
+    # last_premium_paid_date above only marks the first *regular* installment
+    # paid after reinstatement -- but it was still a real premium paid to
+    # revive the policy, so it must be counted even though it isn't dated.
+    total_installments = pre_lapse_installments + last_paid_intervals_from_lapse_due + 1
 
     return _finish_date_chain(
         rcd_date, last_premium_paid_date, due_date, death_date,
@@ -773,7 +778,15 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
     la_birthdate = f"{birth_year}-05-25"
     la_gender = random.choice(issuance.GENDER)
 
-    child_birthdate, _child_age, child_gender = issuance.build_child_fields()
+    # Anchor the child's DOB to the death event's year (not the real today,
+    # which build_child_fields defaults to) so a young child_age can't land
+    # a birthdate after Date of Death/Intimation. build_child_fields fixes
+    # the birthdate at MM-DD 05-25, so when death_date falls before May 25
+    # of its own year, back the anchor up a further year to guarantee the
+    # birthdate still precedes it even at child_age=0.
+    death_date = dates["death_date"]
+    child_ref_year = death_date.year if (death_date.month, death_date.day) >= (5, 25) else death_date.year - 1
+    child_birthdate, _child_age, child_gender = issuance.build_child_fields(current_year=child_ref_year)
 
     deferment_period = issuance.build_deferment_period(valid=True)
     ppt_values = issuance.PPT_RULES["Regular Pay"]["valid_charge_years"]
