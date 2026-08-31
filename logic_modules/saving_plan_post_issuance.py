@@ -314,6 +314,19 @@ def _grace_period_days(interval_months):
     return 30
 
 
+def _lapse_dod_offset_cap(rcd_date, due_date, interval_months):
+    """Largest dod_offset (days past due_date) that keeps death_date on the
+    "lapse" side of the lapse/RPU cutover used by _intimation_date_for_status
+    -- mirrors that function's own cutover logic exactly so a dod_status of
+    "lapse" never produces a death_date for which no "lapse" doi window
+    exists."""
+    grace_days = _grace_period_days(interval_months)
+    grace_end = due_date + timedelta(days=grace_days)
+    months_paid_by_due_days = (due_date - rcd_date).days
+    lapse_end = grace_end if months_paid_by_due_days >= 360 else max(grace_end, rcd_date + timedelta(days=365))
+    return (lapse_end - due_date).days
+
+
 def _installments_for_days(min_days, interval_months):
     interval_days = interval_months * INTERVAL_DAY_APPROX
     return max(1, math.ceil(min_days / interval_days))
@@ -462,9 +475,22 @@ def _place_chain_in_time(today_value, chain_result, trial_rcd_date):
     The chain was built forward from trial_rcd_date (the earliest allowed
     RCD), so its real end-to-end span is now known exactly (no more relying
     on a conservative, worst-case per-shape budget that often left no slack
-    to randomize within). Every date in the chain is shifted by the same
-    number of days, which preserves every day-based gap/window/ordering
-    constraint exactly -- only the absolute calendar placement changes."""
+    to randomize within).
+
+    A flat day-count shift preserves every day-based gap/window/ordering
+    constraint exactly, but installment-anchored dates (last premium paid,
+    due date, lapsed due date) were originally placed via month-based
+    _add_months off trial_rcd_date, not a day count -- shifting them by a
+    flat day delta instead of re-materializing them via _add_months off the
+    final RCD lets their day-of-month drift away from the final RCD's
+    whenever the two anchors cross a different mix of month lengths (e.g.
+    Feb vs. 31-day months) over the (often multi-year) gap between them.
+    So those three are re-materialized via _add_months off the final RCD
+    using their already-known total months-from-rcd, and every other date
+    (which is a pure day offset from one of those three, or from another
+    day-offset date) is shifted by that same anchor's correction -- the
+    difference between its re-materialized and naively-shifted position --
+    so its exact day-gap from its anchor is preserved."""
     total_span_days = (chain_result["acceptance_date"] - trial_rcd_date).days
 
     earliest_rcd = trial_rcd_date
@@ -480,12 +506,45 @@ def _place_chain_in_time(today_value, chain_result, trial_rcd_date):
         return chain_result
 
     delta = timedelta(days=shift_days)
+    final_rcd_date = trial_rcd_date + delta
+
     shifted = dict(chain_result)
-    for key in ("rcd_date", "last_premium_paid_date", "due_date", "death_date",
-                "intimation_date", "revival_date", "lapsed_due_date",
-                "acceptance_date", "extra_premium_debit_date"):
-        if shifted.get(key) is not None:
-            shifted[key] = shifted[key] + delta
+    shifted["rcd_date"] = final_rcd_date
+    shifted["due_date"] = _add_months(final_rcd_date, chain_result["due_date_months"])
+    shifted["last_premium_paid_date"] = _add_months(final_rcd_date, chain_result["last_premium_paid_months"])
+
+    if chain_result.get("lapsed_due_date") is not None:
+        shifted["lapsed_due_date"] = _add_months(final_rcd_date, chain_result["lapsed_due_date_months"])
+        lapsed_correction = shifted["lapsed_due_date"] - (chain_result["lapsed_due_date"] + delta)
+        shifted["revival_date"] = chain_result["revival_date"] + delta + lapsed_correction
+
+    # death_date is a pure day offset from due_date (dod_offset), with no
+    # separate dependency on rcd_date, so it can be corrected the same way --
+    # except for dod_status "lapse", whose offset was originally capped
+    # against the trial position's lapse/RPU cutover (_lapse_dod_offset_cap);
+    # since that cutover depends on (due_date - rcd_date) in days, which can
+    # itself shift by a day or two once due_date is re-materialized here,
+    # the cap must be re-applied at the final position too.
+    dod_offset_days = (chain_result["death_date"] - chain_result["due_date"]).days
+    if chain_result.get("dod_status") == "lapse":
+        dod_offset_days = min(
+            dod_offset_days,
+            _lapse_dod_offset_cap(final_rcd_date, shifted["due_date"], chain_result["interval_months"]),
+        )
+    shifted["death_date"] = shifted["due_date"] + timedelta(days=dod_offset_days)
+
+    # intimation_date's window boundaries depend on rcd_date and due_date
+    # independently (see _intimation_date_for_status), so a single flat
+    # correction can't always preserve both relationships -- recompute it
+    # (and the dates that chain off it) fresh against the final structural
+    # dates instead of reshifting the trial run's values.
+    extra_premium_debit_date, intimation_date, acceptance_date = _add_dependent_dates(
+        final_rcd_date, shifted["due_date"], shifted["death_date"],
+        chain_result["doi_status"], chain_result["interval_months"], chain_result["extra_prem"],
+    )
+    shifted["extra_premium_debit_date"] = extra_premium_debit_date
+    shifted["intimation_date"] = intimation_date
+    shifted["acceptance_date"] = acceptance_date
     return shifted
 
 
@@ -537,6 +596,7 @@ def _build_date_chain(today_value, dod_status, doi_status,
             extra_prem=extra_prem, suicide_window=suicide_window, needs_rpu_1yr=needs_rpu_1yr,
         )
 
+    result["dod_status"] = dod_status
     result = _place_chain_in_time(today_value, result, trial_rcd_date)
     result["payment_freq_label"] = payment_freq_label
     return result
@@ -559,6 +619,14 @@ def _build_date_chain_via_rcd(rcd_date, dod_status, doi_status, interval_months,
         rcd_date, interval_months, dod_status, suicide_window, min_installments
     )
 
+    if extra_prem and dod_status == "inforce":
+        # extra_prem cases are always paired with doi_status "inforce" too, so
+        # both the extra auto-pay debit and the intimation date (in that
+        # order) must still land before due_date. The plain inforce window
+        # (-5,-1) is too tight at its near end (-1/-2 days) to fit both --
+        # widen the gap so _finish_date_chain has room to place them.
+        dod_offset = min(dod_offset, -3)
+
     if doi_status == "lapse" and dod_status != "lapse":
         # Lapse (as opposed to RPU) is only reached if fewer than 12 months
         # of premiums were paid as of the missed due_date; otherwise the
@@ -570,11 +638,22 @@ def _build_date_chain_via_rcd(rcd_date, dod_status, doi_status, interval_months,
 
     last_premium_paid_date = _add_installments(rcd_date, installments_before_dod, interval_months)
     due_date = _due_date_for_installments(rcd_date, installments_before_dod, interval_months)
+
+    if dod_status == "lapse":
+        # Mirror _intimation_date_for_status's lapse/RPU cutover: if due_date
+        # already sits close to the 12-months-paid mark, the (35,90)-day
+        # DOD_OFFSET_RANGE for lapse can push death_date past that cutover,
+        # leaving no valid "lapse" window for the intimation date afterward.
+        # Cap the offset so death_date never crosses it.
+        dod_offset = min(dod_offset, _lapse_dod_offset_cap(rcd_date, due_date, interval_months))
+
     death_date = due_date + timedelta(days=dod_offset)
 
     return _finish_date_chain(
         rcd_date, last_premium_paid_date, due_date, death_date,
         doi_status, installments_before_dod, interval_months,
+        due_date_months=(installments_before_dod + 1) * interval_months,
+        last_premium_paid_months=installments_before_dod * interval_months,
         extra_prem=extra_prem, revival_date=None,
     )
 
@@ -626,7 +705,8 @@ def _build_date_chain_via_reinstatement(rcd_date, dod_status, doi_status, interv
 
     if post_revival:
         post_reinstatement_installments = 1
-        dod_offset = random.randint(0, 3)
+        dod_min, dod_max = DOD_OFFSET_RANGE[dod_status]
+        dod_offset = random.randint(dod_min, dod_max)
     else:
         # Installment count is chosen against the real Reinstatement date (the
         # suicide within/after-1yr window is measured from there), but the
@@ -658,21 +738,39 @@ def _build_date_chain_via_reinstatement(rcd_date, dod_status, doi_status, interv
     # revive the policy, so it must be counted even though it isn't dated.
     total_installments = pre_lapse_installments + last_paid_intervals_from_lapse_due + 1
 
+    lapsed_due_date_months = (pre_lapse_installments + 1) * interval_months
     return _finish_date_chain(
         rcd_date, last_premium_paid_date, due_date, death_date,
         doi_status, total_installments, interval_months,
+        due_date_months=lapsed_due_date_months + due_intervals_from_lapse_due * interval_months,
+        last_premium_paid_months=lapsed_due_date_months + last_paid_intervals_from_lapse_due * interval_months,
         extra_prem=extra_prem, revival_date=reinstatement_date, lapsed_due_date=lapse_due_date,
+        lapsed_due_date_months=lapsed_due_date_months,
     )
 
 
-def _finish_date_chain(rcd_date, last_premium_paid_date, due_date, death_date,
-                       doi_status, installments_paid, interval_months,
-                       extra_prem=False, revival_date=None, lapsed_due_date=None):
+def _add_dependent_dates(rcd_date, due_date, death_date, doi_status, interval_months, extra_prem):
+    """Compute the dates that are randomized *from* the structural chain
+    (extra-premium debit, intimation, acceptance) but never feed back into
+    it. Kept as a standalone function of only (rcd_date, due_date,
+    death_date) -- not the intermediate values used to derive them -- so
+    _place_chain_in_time can call it a second time against the final,
+    RCD-realigned structural dates to get genuinely correct results there,
+    rather than trying to reshift the trial run's values (whose windows
+    depend on rcd_date and due_date independently, so a single flat
+    correction can't always preserve both relationships at once)."""
     # Extra-premium scenario: an autopay premium is debited *after* the date of
     # death but on/before the date of intimation (rare, explicit case).
+    # extra_prem cases are always paired with doi_status "inforce", so the
+    # debit (and the intimation_date override below) must still land before
+    # due_date -- cap the 1-5 day offset to whatever room actually remains
+    # (the caller widens dod_offset for extra_prem so there's at least 3
+    # days of gap here).
     extra_premium_debit_date = None
     if extra_prem:
-        extra_premium_debit_date = death_date + timedelta(days=random.randint(1, 5))
+        gap_to_due = (due_date - death_date).days
+        max_extra_offset = max(1, min(5, gap_to_due - 2))
+        extra_premium_debit_date = death_date + timedelta(days=random.randint(1, max_extra_offset))
 
     intimation_date = _intimation_date_for_status(
         death_date, due_date, rcd_date, doi_status, interval_months
@@ -681,6 +779,17 @@ def _finish_date_chain(rcd_date, last_premium_paid_date, due_date, death_date,
         intimation_date = max(intimation_date, extra_premium_debit_date + timedelta(days=1))
 
     acceptance_date = intimation_date + timedelta(days=random.randint(5, 20))
+    return extra_premium_debit_date, intimation_date, acceptance_date
+
+
+def _finish_date_chain(rcd_date, last_premium_paid_date, due_date, death_date,
+                       doi_status, installments_paid, interval_months,
+                       due_date_months, last_premium_paid_months,
+                       extra_prem=False, revival_date=None, lapsed_due_date=None,
+                       lapsed_due_date_months=None):
+    extra_premium_debit_date, intimation_date, acceptance_date = _add_dependent_dates(
+        rcd_date, due_date, death_date, doi_status, interval_months, extra_prem
+    )
 
     # installments_paid counts installments *after* RCD (count=0 means only
     # the RCD premium was paid); the real "number of premiums paid" also
@@ -698,6 +807,19 @@ def _finish_date_chain(rcd_date, last_premium_paid_date, due_date, death_date,
         "acceptance_date": acceptance_date,
         "extra_premium_debit_date": extra_premium_debit_date,
         "installments_paid": total_premiums_paid_count,
+        # Total whole-interval months from rcd_date to each installment-
+        # anchored date, so _place_chain_in_time can re-materialize them via
+        # _add_months off the final RCD (keeping day-of-month aligned)
+        # instead of a flat day shift.
+        "due_date_months": due_date_months,
+        "last_premium_paid_months": last_premium_paid_months,
+        "lapsed_due_date_months": lapsed_due_date_months,
+        # Carried through so _place_chain_in_time can recompute the
+        # dependent dates (extra premium debit / intimation / acceptance)
+        # against the final, RCD-realigned structural dates.
+        "doi_status": doi_status,
+        "interval_months": interval_months,
+        "extra_prem": extra_prem,
     }
 
 
@@ -709,19 +831,25 @@ def _intimation_date_for_status(death_date, due_date, rcd_date, doi_status, inte
       - grace:   (due_date, due_date + grace_days].
       - lapse:   (due_date + grace_days, rcd_date + 365 days] -- i.e. before
                  the policy would reach 12 months paid (from RCD) and become
-                 RPU instead of remaining lapsed. Callers only ever build a
-                 doi_status == "lapse" chain where due_date already
-                 represents fewer than 12 months paid, so this upper bound is
-                 always after the lower bound.
+                 RPU instead of remaining lapsed.
       - RPU:     after the lapse window closes (or, for a direct
                  inforce/grace -> RPU jump, comfortably after due_date).
     Every window is intersected with "on/after death_date" and falls back to
     a fixed small delay if death_date itself is already past the window
     (e.g. dod_status == doi_status, where death_date is already inside it).
+
+    The 12-months-paid mark is normally rcd_date + 365 days, but a dod_status
+    that itself requires 12+ months paid before the missed due_date (RPU
+    eligibility on the dod side) can push due_date -- and so grace_end --
+    past that fixed mark. In that case there is no lapse state to pass
+    through at all (grace transitions straight to RPU), so lapse_end is
+    pulled up to grace_end rather than left behind it, which would otherwise
+    invert the lapse/RPU window order.
     """
     grace_days = _grace_period_days(interval_months)
     grace_end = due_date + timedelta(days=grace_days)
-    lapse_end = rcd_date + timedelta(days=365)
+    months_paid_by_due_days = (due_date - rcd_date).days
+    lapse_end = grace_end if months_paid_by_due_days >= 360 else max(grace_end, rcd_date + timedelta(days=365))
 
     windows = {
         "inforce": (None, due_date - timedelta(days=1)),
@@ -791,7 +919,16 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
     )
     payment_freq_label = dates["payment_freq_label"]
 
-    birth_year = today_value.year - age
+    # Anchor to RCD (not today's date): `age` is the entry age as of RCD, and
+    # RCD is itself backdated by RCD_MIN_YEARS_BACK..RCD_MAX_YEARS_BACK years,
+    # so computing the birth year off today's date would understate the
+    # assured's real age at RCD and could put it below MIN_ENTRY_AGE (18).
+    # Birthdate is fixed at MM-DD 05-25, so if RCD falls before May 25 of its
+    # own year, that year's birthday hasn't happened yet as of RCD -- back the
+    # birth year up one further to keep the completed age at RCD equal to age.
+    rcd_date = dates["rcd_date"]
+    birthday_not_yet_reached = (rcd_date.month, rcd_date.day) < (5, 25)
+    birth_year = rcd_date.year - age - (1 if birthday_not_yet_reached else 0)
     la_birthdate = f"{birth_year}-05-25"
     la_gender = random.choice(issuance.GENDER)
 
