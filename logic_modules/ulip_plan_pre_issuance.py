@@ -82,7 +82,7 @@ MODULE_NAME = "ULIP Plan"
 API_MODE_VALUE = "Base plan" 
 API_MODE_VALUE_RIDER = "Base Plan + AD"
 
-INCEPTION_DATE_VALUE = "1/Sept/2025" #can be changed to current date
+INCEPTION_DATE_VALUE = "2025-09-01" #can be changed to current date
 EXECUTE_VALUE = "N"
 MEDICAL_INDI = "Medical"
 CHECKING_NOTE_CREATE_VALUE = "Create"
@@ -307,7 +307,7 @@ def build_birthdate_for_age(age, reference_date=None):
     ref_date = reference_date or date.today()
     if isinstance(age, float) and age % 1 != 0:
         return build_birthdate(age, reference_date=ref_date)
-    return f"01/Jan/{ref_date.year - int(age)}"
+    return f"{ref_date.year - int(age)}-01-01"
 
 
 def build_person_context(age, gender, reference_date=None):
@@ -462,7 +462,7 @@ def build_birthdate(age, reference_date=None):
     if month <= 0:
         year -= 1
         month += 12
-    return f"01/{MONTH_ABBR[month - 1]}/{year}"
+    return f"{year}-{month:02d}-01"
 
 PPT_RULES = {
     "Single Pay": {

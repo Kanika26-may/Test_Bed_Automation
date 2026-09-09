@@ -49,6 +49,13 @@ CAUSE_OF_DEATH_OPTIONS = ["ACCIDENTAL", "NON_ACCIDENTAL"]
 
 INCOME_SHIELD_PLAN_OPTIONS = {"CAREERSTART_SECURE_INCOME", "CAREERSTART_LIFE_SHIELD_INCOME"}
 
+PLAN_OPTION_DISPLAY_NAMES = {
+    "CAREER_START_INCOME": "CareerStart Income",
+    "CAREERSTART_HEALTH_SHIELD_INCOME": "CareerStart Health Shield Income",
+    "CAREERSTART_SECURE_INCOME": "CareerStart Secure Income",
+    "CAREERSTART_LIFE_SHIELD_INCOME": "CareerStart Life Shield Income",
+}
+
 
 def _dod_doi_cases(dod_status, doi_statuses):
     """Build (dod, doi) case tuples for one dod status against several doi statuses."""
@@ -151,7 +158,11 @@ FIXED_VALUES = {
     "lumpSumBenefit": 100,
     "coverageCode": "ARMP0000149",
     "name": "kabir aneja",
-    "payoutPercent": 100,
+    "payoutPercent1": 100,
+    "payoutPercent2": 0,
+    "payoutPercent3": 0,
+    "payoutPercent4": 0,
+    "payoutPercent5": 0,
     "schemeCode": "ARMP0000149",
     "productCode": "IGCHILDASSURE_01",
     "productCategory": "ENDOWMENT",
@@ -162,15 +173,11 @@ FIXED_VALUES = {
     "loanPayoutRequired": False,
     "loanAmount": 0,
     "Oustanding Policy Loan Amount inclusive of Loan Interest as on date of death (INR)": 0,
-    "sumAssured": "",
-    "effectiveSumAssured": "",
-    "accidentalDeathBenefit": "",
     "currentPolicyStatus": "INFORCE",
     "totalSuspense": 0,
     "adRiderSumAssured": 0,
     "allRidersUrpvAmount": 0,
     "option": "INCOME",
-    "additionalSumAssured": "",
     "Surrender Value as on Date of Death (INR)": 0,
     "Distribution Channel": "Other than Direct / Online",
     "Policy Loan Opted (if any)": "No",
@@ -185,7 +192,8 @@ column_order = [
     "Date of Birth of Child", "Gender of Child",
     "Is the Life Assured same as Policyholder?",
     "dueDate", "Date of Death",
-    "incomeBenefit", "lumpSumBenefit", "coverageCode", "name", "payoutPercent",
+    "incomeBenefit", "lumpSumBenefit", "coverageCode", "name",
+    "payoutPercent1", 
     "schemeCode", "productCode", "productCategory",
     "policyStatusOnEvent", "policyReasonOnEvent", "Policy Status",
     "isPartiallyWithdrawn", "lob",
@@ -208,7 +216,7 @@ column_order = [
     "Income Shield Monthly Income Instalment (in years)",
     "Interest rate for calculating monthly income shield instalment",
     "Date of last Premium Paid", "No. Of premium paid", "Premium Refund",
-    "Total Premiums Paid inclusive of Modal Loading, First Year Premium Discount, EMR Premium, Per Mille, NSAP loading & Rider premiums exclusive of Taxes till Date of Death (INR)",
+    "Total Premiums Paid inclusive of Modal Loading, First Year Premium Discount, EMR Premium, Per Mille, NSAP loading & Rider premiums exclusive of Taxes till Date of Death (INR)","payoutPercent2", "payoutPercent3", "payoutPercent4", "payoutPercent5"
 ]
 
 
@@ -227,8 +235,8 @@ def get_case_catalogue(subsection):
 # ============================================================================
 
 def _format_date(value):
-    """Format date object to DD/MM/YYYY string."""
-    return value.strftime("%d/%m/%Y")
+    """Format date object to YYYY-MM-DD string."""
+    return value.strftime("%Y-%m-%d")
 
 
 def _add_months(base_date, month_delta):
@@ -885,10 +893,21 @@ def _decision_and_status_from_flavor(flavor):
     return "Repudiate", "Repudiate"
 
 
-def _premium_refund(flavor, total_premiums_paid):
+def _decision_code(decision, flavor=None):
+    """Map the internal decision/flavor to the API-facing decision code."""
+    if decision == "Accept":
+        return "ACCEPTED"
+    if decision == "Reject":
+        return "REJECTED"
     if flavor == "Repudiate (with refund)":
-        return str(total_premiums_paid)
-    return "NA"
+        return "REPUDIATE_WITH_REFUND"
+    return "REPUDIATED"
+
+
+def _premium_refund(flavor):
+    if flavor == "Repudiate (with refund)":
+        return "Yes"
+    return "No"
 
 
 def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi_status, extra, combo_idx=0):
@@ -962,6 +981,11 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
 
     total_premiums_paid = install_premium * dates["installments_paid"]
 
+    sum_assured = 105 * annualized_premium
+    effective_sum_assured = sum_assured
+    accidental_death_benefit = sum_assured
+    additional_sum_assured = sum_assured * 0.25 if plan_option in INCOME_SHIELD_PLAN_OPTIONS else 0
+
     is_suicide_case = subsection == "Suicide cases" or suicide_window is not None
     cause_of_death = "SUICIDE" if is_suicide_case else random.choice(CAUSE_OF_DEATH_OPTIONS)
     reason_for_death = REASON_FOR_DEATH_BY_CAUSE[cause_of_death]
@@ -971,10 +995,13 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
         decision = fixed_decision
         claim_status = decision
         premium_refund = "NA"
+        flavor = None
     else:
         flavor = _resolve_reject_repudiate_flavor()
         decision, claim_status = _decision_and_status_from_flavor(flavor)
-        premium_refund = _premium_refund(flavor, total_premiums_paid)
+        premium_refund = _premium_refund(flavor)
+
+    decision_code = _decision_code(decision, flavor)
 
     # dod is used for policyReasonOnEvent/Policy Status (status as of the event).
     policy_reason = STATUS_REASON["inforce"] if post_revival else STATUS_REASON[dod_status]
@@ -989,7 +1016,7 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
     income_shield_period = (
         str(random.choice(issuance.INCOME_SHIELD_VALID_PERIODS))
         if plan_option in INCOME_SHIELD_PLAN_OPTIONS
-        else "NA"
+        else "Not Applicable"
     )
 
     suicide_window_reference = None
@@ -1042,7 +1069,7 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
         "policyNumber": _random_policy_number(),
         "dateOfIntimation": _format_date(dates["intimation_date"]),
         "causeOfDeath": cause_of_death,
-        "Date of Revival": _format_date(dates["revival_date"]) if dates.get("revival_date") else "",
+        "Date of Revival": _format_date(dates["revival_date"]) if dates.get("revival_date") else _format_date(dates["rcd_date"]),
         "rcd": _format_date(dates["rcd_date"]),
         "Date of Birth of Life Assured": la_birthdate,
         "Gender of Life Assured": la_gender,
@@ -1054,9 +1081,13 @@ def _build_death_claim_row(tuid_counter, subsection, case_label, dod_status, doi
         "policyReasonOnEvent": policy_reason,
         "Policy Status": policy_status,
         "Claim Status": claim_status,
-        "decision": decision,
-        "Plan Option": plan_option,
+        "decision": decision_code,
+        "Plan Option": PLAN_OPTION_DISPLAY_NAMES.get(plan_option, plan_option),
         "Base Installment Premium inclusive of EMR Premium, Per Mille, NSAP loading and Service Tax (Rs.)": install_premium,
+        "sumAssured": sum_assured,
+        "effectiveSumAssured": effective_sum_assured,
+        "accidentalDeathBenefit": accidental_death_benefit,
+        "additionalSumAssured": additional_sum_assured,
         "Total Premiums Paid inclusive of First Year Discount and modal loadings till Date of Death (INR)": total_premiums_paid,
         "totalBasePremiumPaidToDate": total_premiums_paid,
         "currentPolicyReason": policy_reason,

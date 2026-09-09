@@ -48,7 +48,7 @@ MODULE_NAME = "Term Plan"
 API_MODE_VALUE = "Base plan" 
 API_MODE_VALUE_RIDER = "Base Plan + AD"
 
-INCEPTION_DATE_VALUE = "1/Sept/2025" #can be changed to current date
+INCEPTION_DATE_VALUE = "2025-09-01" #can be changed to current date
 EXECUTE_VALUE = "N"
 MEDICAL_INDI = "Medical"
 CHECKING_NOTE_CREATE_VALUE = "Create"
@@ -523,7 +523,7 @@ def build_common_row(tuid_counter, module_name, api_operation, checking_note, pp
         'inceptionDate': inception_date,
         'policyHolderLocation': policy_loc,
         'insurerLocation': insurer_loc,
-        'birthdate': f"01/Jan/{birth_year}",
+        'birthdate': f"{birth_year}-01-01",
         'Age': age,
         'gender': gender,
         'smoking': smoking,

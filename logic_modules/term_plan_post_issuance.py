@@ -275,13 +275,13 @@ def get_post_issuance_epics_for_plan(plan_type):
 # ============================================================================
 
 def _format_date(value):
-    """Format date object to DD/MM/YYYY string."""
-    return value.strftime("%d/%m/%Y")
+    """Format date object to YYYY-MM-DD string."""
+    return value.strftime("%Y-%m-%d")
 
 
 def _format_birthdate(value):
-    """Format birthdate as DD/Mon/YYYY to match issuance style."""
-    return value.strftime("%d/%b/%Y")
+    """Format birthdate as YYYY-MM-DD string."""
+    return value.strftime("%Y-%m-%d")
 
 
 def _parse_date_value(value):
