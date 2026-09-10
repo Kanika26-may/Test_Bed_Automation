@@ -2,7 +2,7 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-from ui_common import configure_app_shell, PLAN_LIFECYCLE_MODULE_MAP
+from ui_common import configure_app_shell, PLAN_LIFECYCLE_MODULE_MAP, ULIP_VARIANTS
 from term_plan_ui import render_term_plan_ui
 from saving_plan_ui import render_saving_plan_ui
 from ulip_plan_ui import render_ulip_plan_ui
@@ -58,8 +58,22 @@ def main ():
             options=list(PLAN_LIFECYCLE_MODULE_MAP.keys()),
             key="app_selected_plan_type",
         )
+        if selected_plan_type == "ulip plan":
+            st.selectbox(
+                "Product Variant",
+                options=ULIP_VARIANTS,
+                key="ulip_variant_selector",
+            )
 
-    if selected_plan_type != st.session_state.get("app_last_plan_type"):
+    # A variant switch changes the logic module, so treat it like a plan change
+    # and clear the epic/config state built for the previous variant.
+    selected_ulip_variant = st.session_state.get("ulip_variant_selector")
+    variant_changed = selected_ulip_variant != st.session_state.get(
+        "app_last_ulip_variant"
+    )
+    st.session_state["app_last_ulip_variant"] = selected_ulip_variant
+
+    if selected_plan_type != st.session_state.get("app_last_plan_type") or variant_changed:
         reset_keys = [
             "generated_df",
             "selected_module_name_py",

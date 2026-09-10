@@ -39,6 +39,19 @@ PLAN_LIFECYCLE_MODULE_MAP = {
     },
 }
 
+# ULIP product variants. "Ultima Plus" follows the current ULIP plan; "Ultima Care"
+# is the ULIP + iTerm Care combo and has its own pre issuance logic module.
+ULIP_VARIANTS = ["Ultima Care", "Ultima Plus"]
+ULIP_VARIANT_DEFAULT = "Ultima Plus"
+ULIP_VARIANT_MODULE_MAP = {
+    "Ultima Care": {
+        "pre issuance": "ulip_ultima_care_pre_issuance",
+        "issuance": "ulip_plan_issuance",
+        "post issuance": "ulip_plan_post_issuance",
+    },
+    "Ultima Plus": PLAN_LIFECYCLE_MODULE_MAP["ulip plan"],
+}
+
 # Google Sheets Configuration
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -637,11 +650,21 @@ def load_logic_module(
         return None
 
 
+def get_selected_ulip_variant():
+    return st.session_state.get("ulip_variant_selector", ULIP_VARIANT_DEFAULT)
+
+
 def resolve_plan_lifecycle_module(plan_type, lifecycle_name):
-    plan_modules = PLAN_LIFECYCLE_MODULE_MAP.get(
-        plan_type,
-        PLAN_LIFECYCLE_MODULE_MAP["term plan"],
-    )
+    if plan_type == "ulip plan":
+        plan_modules = ULIP_VARIANT_MODULE_MAP.get(
+            get_selected_ulip_variant(),
+            PLAN_LIFECYCLE_MODULE_MAP["ulip plan"],
+        )
+    else:
+        plan_modules = PLAN_LIFECYCLE_MODULE_MAP.get(
+            plan_type,
+            PLAN_LIFECYCLE_MODULE_MAP["term plan"],
+        )
     return plan_modules.get(lifecycle_name, plan_modules["pre issuance"])
 
 
@@ -845,6 +868,56 @@ PPT_CONFIGS = {
             "Others": (5000000, 20000000),
         },
     },
+    # Ultima Care (ULIP + iTerm Care combo): Limited Pay and yearly frequency only.
+    # "Regular Pay" is kept as an alias of the 5 pay entry because shared UI code
+    # reads ppt_config[...]["Regular Pay"] for its defaults.
+    "ultima care": {
+        "ppt_names": [
+            "Limited Pay (5 pay)",
+            "Limited Pay (7 pay)",
+            "Limited Pay (10 pay)",
+            "Limited Pay (15 pay)",
+            "Limited Pay (20 pay)",
+        ],
+        "entry_age": {
+            "Limited Pay (5 pay)": (18, 45),
+            "Limited Pay (7 pay)": (18, 45),
+            "Limited Pay (10 pay)": (18, 45),
+            "Limited Pay (15 pay)": (18, 45),
+            "Limited Pay (20 pay)": (18, 45),
+            "Regular Pay": (18, 45),
+        },
+        "policy_term": {
+            "Limited Pay (5 pay)": (10, 30),
+            "Limited Pay (7 pay)": (10, 30),
+            "Limited Pay (10 pay)": (10, 30),
+            "Limited Pay (15 pay)": (15, 30),
+            "Limited Pay (20 pay)": (20, 30),
+            "Regular Pay": (10, 30),
+        },
+        "maturity_age": {
+            "Limited Pay (5 pay)": (23, 75),
+            "Limited Pay (7 pay)": (23, 75),
+            "Limited Pay (10 pay)": (23, 75),
+            "Limited Pay (15 pay)": (23, 75),
+            "Limited Pay (20 pay)": (23, 75),
+            "Regular Pay": (23, 75),
+        },
+        "premium_paying_term": {
+            "Limited Pay (5 pay)": (5, 5),
+            "Limited Pay (7 pay)": (7, 7),
+            "Limited Pay (10 pay)": (10, 10),
+            "Limited Pay (15 pay)": (15, 15),
+            "Limited Pay (20 pay)": (20, 20),
+            "Regular Pay": (5, 20),
+        },
+        # "Single Pay" is not offered by Ultima Care, but the shared epic UI reads
+        # this key when other lifecycle tabs render ULIP epics, so keep it defined.
+        "sum_assured": {
+            "Single Pay": (2500000, 5000000),
+            "Others": (5000000, 20000000),
+        },
+    },
 }
 
 POST_ISSUANCE_FREQUENCY_OPTIONS = [
@@ -863,7 +936,20 @@ POST_ISSUANCE_FREQUENCY_MAP = {
     "Single Pay": 5,
 }
 
-def get_ppt_config(plan_type):
+ULTIMA_CARE_MODULE = "ulip_ultima_care_pre_issuance"
+
+
+def get_ppt_config(plan_type, module_name=None):
+    """PPT config for a plan, narrowed to a specific logic module when given.
+
+    `module_name` is the logic module's file name (its __name__), not the display
+    name, which the UI overwrites with whatever the user typed. Ultima Care only
+    replaces the ULIP config for its own module; the other ULIP lifecycle stages
+    keep rendering standard ULIP epics.
+    """
+    if plan_type == "ulip plan" and get_selected_ulip_variant() == "Ultima Care":
+        if module_name is None or module_name == ULTIMA_CARE_MODULE:
+            return PPT_CONFIGS["ultima care"]
     return PPT_CONFIGS.get(plan_type, PPT_CONFIGS["term plan"])
 
 def get_post_issuance_defaults(plan_type):
@@ -1349,7 +1435,10 @@ def render_base_plan_epics(
 
     epic_map = getattr(logic_module, "EPIC_MAP")
     plan_type = st.session_state.get("plan_type_selector", "term plan")
-    ppt_config = get_ppt_config(plan_type)
+    # Scope the PPT config to the module being rendered: only Ultima Care's own
+    # logic module uses the Ultima Care PPT list. The other ULIP lifecycle tabs
+    # still render standard ULIP epics and need the standard ULIP config.
+    ppt_config = get_ppt_config(plan_type, getattr(logic_module, "__name__", None))
     ppt_names = ppt_config["ppt_names"]
     entry_age_ppt_ranges = ppt_config["entry_age"]
     policy_term_ppt_ranges = ppt_config["policy_term"]
@@ -3918,7 +4007,10 @@ def render_plan_ui(plan_type, display_name_default=None):
                 key=portfolio_key,
             )
 
-        if plan_type == "saving plan":
+        # Ultima Care carries the same EMR/PerMille onloading fields as the saving plan.
+        if plan_type == "saving plan" or (
+            plan_type == "ulip plan" and get_selected_ulip_variant() == "Ultima Care"
+        ):
             st.checkbox(
                 "Generate without loading testbeds",
                 value=False,
@@ -4014,7 +4106,10 @@ def render_plan_ui(plan_type, display_name_default=None):
                                 portfolio_key, "LIFESTYLE"
                             )
 
-                        if plan_type == "saving plan":
+                        if plan_type == "saving plan" or (
+                            plan_type == "ulip plan"
+                            and get_selected_ulip_variant() == "Ultima Care"
+                        ):
                             generate_kwargs["skip_testbed_load"] = st.session_state.get(
                                 "generate_without_loading_testbeds", False
                             )
