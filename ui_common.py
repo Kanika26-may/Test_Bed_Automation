@@ -453,13 +453,8 @@ def collect_current_config():
     config = {
         "product_display_name": st.session_state.get("product_display_name_input", ""),
         "product_code": st.session_state.get("product_code_input", ""),
-        "count_mode": st.session_state.get(
-            "count_mode_selector", "Apply Same Count to All Epics"
-        ),
         "selected_plan_type": st.session_state.get("plan_type_selector", "term plan"),
-        "lifecycle_to_generate": st.session_state.get(
-            "lifecycle_to_generate", "pre issuance"
-        ),
+        "lifecycle_to_generate": get_selected_lifecycle(),
         "ui_state": {},
     }
 
@@ -538,8 +533,6 @@ def apply_config_to_ui(config):
         st.session_state["product_display_name_input"] = config["product_display_name"]
     if "product_code" in config:
         st.session_state["product_code_input"] = config["product_code"]
-    if "count_mode" in config:
-        st.session_state["count_mode_selector"] = config["count_mode"]
     if "selected_plan_type" in config:
         st.session_state["plan_type_selector"] = config["selected_plan_type"]
     if "lifecycle_to_generate" in config:
@@ -652,6 +645,11 @@ def load_logic_module(
 
 def get_selected_ulip_variant():
     return st.session_state.get("ulip_variant_selector", ULIP_VARIANT_DEFAULT)
+
+
+def get_selected_lifecycle():
+    """Lifecycle stage to generate for."""
+    return st.session_state.get("lifecycle_to_generate", "pre issuance")
 
 
 def resolve_plan_lifecycle_module(plan_type, lifecycle_name):
@@ -1218,7 +1216,6 @@ def _build_post_issuance_epic_payload(pos_count, selected_header, constraints):
 def render_post_issuance_epics(
     plan_type,
     lifecycle_key_prefix,
-    count_mode,
     num_positive_global,
     shared_lifecycle_prefix=None,
 ):
@@ -1305,27 +1302,8 @@ def render_post_issuance_epics(
                 lifecycle_key_prefix,
                 f"post_epic_cb_{selected_header}_{epic_index}",
             )
-            pos_count_key = lifecycle_key(
-                lifecycle_key_prefix,
-                f"post_epic_pos_{selected_header}_{epic_index}",
-            )
-
-            if count_mode == "Set Individual Counts for Each Epic":
-                row = st.columns([4, 2])
-                with row[0]:
-                    is_selected = st.checkbox(epic_name, value=True, key=checkbox_key)
-                with row[1]:
-                    pos_count = st.number_input(
-                        f"Pos {epic_name}",
-                        min_value=0,
-                        value=5,
-                        key=pos_count_key,
-                        label_visibility="collapsed",
-                        placeholder="Pos",
-                    )
-            else:
-                is_selected = st.checkbox(epic_name, value=True, key=checkbox_key)
-                pos_count = num_positive_global
+            is_selected = st.checkbox(epic_name, value=True, key=checkbox_key)
+            pos_count = num_positive_global
 
             if is_selected:
                 selected_epics.append(epic_name)
@@ -1343,7 +1321,7 @@ def render_post_issuance_epics(
     return selected_header, selected_epics, epic_counts
 
 
-def render_saving_plan_death_claim_epics(lifecycle_key_prefix, count_mode, num_positive_global):
+def render_saving_plan_death_claim_epics(lifecycle_key_prefix, num_positive_global):
     """Render the Death Claim post-issuance section for the saving plan.
 
     Unlike the term-plan post-issuance model (FLC/Grace/Lapse/...), saving plan
@@ -1392,26 +1370,8 @@ def render_saving_plan_death_claim_epics(lifecycle_key_prefix, count_mode, num_p
                 checkbox_key = lifecycle_key(
                     lifecycle_key_prefix, f"post_death_claim_cb_{subsection}_{case_label}"
                 )
-                pos_count_key = lifecycle_key(
-                    lifecycle_key_prefix, f"post_death_claim_pos_{subsection}_{case_label}"
-                )
-
-                if count_mode == "Set Individual Counts for Each Epic":
-                    row = st.columns([4, 2])
-                    with row[0]:
-                        is_selected = st.checkbox(case_label, value=True, key=checkbox_key)
-                    with row[1]:
-                        pos_count = st.number_input(
-                            f"Pos {subsection} {case_label}",
-                            min_value=0,
-                            value=1,
-                            key=pos_count_key,
-                            label_visibility="collapsed",
-                            placeholder="Pos",
-                        )
-                else:
-                    is_selected = st.checkbox(case_label, value=True, key=checkbox_key)
-                    pos_count = num_positive_global
+                is_selected = st.checkbox(case_label, value=True, key=checkbox_key)
+                pos_count = num_positive_global
 
                 if is_selected:
                     epic_key = f"{subsection}::{case_label}"
@@ -1424,7 +1384,6 @@ def render_saving_plan_death_claim_epics(lifecycle_key_prefix, count_mode, num_p
 def render_base_plan_epics(
     logic_module,
     lifecycle_key_prefix,
-    count_mode,
     num_positive_global,
     num_negative_global,
 ):
@@ -1438,7 +1397,10 @@ def render_base_plan_epics(
     # Scope the PPT config to the module being rendered: only Ultima Care's own
     # logic module uses the Ultima Care PPT list. The other ULIP lifecycle tabs
     # still render standard ULIP epics and need the standard ULIP config.
-    ppt_config = get_ppt_config(plan_type, getattr(logic_module, "__name__", None))
+    module_file_name = getattr(logic_module, "__name__", None)
+    ppt_config = get_ppt_config(plan_type, module_file_name)
+    # Ultima Care positive cases are yearly only, so it offers no frequency picker.
+    is_ultima_care = module_file_name == ULTIMA_CARE_MODULE
     ppt_names = ppt_config["ppt_names"]
     entry_age_ppt_ranges = ppt_config["entry_age"]
     policy_term_ppt_ranges = ppt_config["policy_term"]
@@ -1476,33 +1438,419 @@ def render_base_plan_epics(
     with st.expander("\u2139\ufe0f Configure Epics and Case Counts", expanded=True):
         for epic_key, epic_desc in epic_map.items():
 
-            if count_mode == "Set Individual Counts for Each Epic":
+            if plan_type == "saving plan":
+                ppt="Regular Pay"  # For saving plan, show sliders for Regular Pay configuration as default
                 if epic_key in [
                     "PolicyTerm",
-                    "EntryAge",
+                    "DefermentPeriod",
+                    "ChildEntryAge"
+                ]:  
+                    ppt_age_ranges, ppt_enabled = {}, {}
+                    row = st.columns([0.8, 2])
+                    with row[0]:
+                        is_selected = st.checkbox(
+                            epic_desc,
+                            value=select_all,
+                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                        )
+                    with row[1]:
+                        if epic_key == "PolicyTerm":
+                            min_age, max_age = st.slider(
+                                "Policy Term",
+                                5,
+                                80,
+                                policy_term_ppt_ranges[ppt],
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"entry_age_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                                    
+                        elif epic_key == "ChildEntryAge":
+                            min_age = st.slider(
+                                "ChildEntryAge",
+                                5,
+                                80,
+                                child_entry_age,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"ChildEntryAge_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+
+                        elif epic_key == "DefermentPeriod":
+                            min_age, max_age = st.slider(
+                                "Deferment Period",
+                                0,
+                                20,
+                                DefermentPeriod_ranges,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"DefermentPeriod_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+
+                    if is_selected:
+                        ppt_age_ranges[ppt] = (min_age, max_age)
+                        ppt_enabled[ppt] = True
+                        selected_epics.append(epic_key)
+                        epic_counts[epic_key] = {
+                            "ppt_age_ranges": ppt_age_ranges,
+                            "ppt_enabled": ppt_enabled,
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                        }
+
+                elif epic_key in [
+                    "MinimumEntryAge",
                     "MaximumEntryAgePlanOption1",
                     "MaximumEntryAgePlanOption2",
                     "MaximumEntryAgePlanOption3",
                     "MaximumEntryAgePlanOption4",
-                    "ChildEntryAge",
-                    "MaturityAge",
+                    "MinimumMaturityAge",
                     "MaximumMaturityAgePlanOption1",
                     "MaximumMaturityAgePlanOption2",
                     "MaximumMaturityAgePlanOption3",
                     "MaximumMaturityAgePlanOption4",
-                    # "PaymentFrequency",
-                    "PremiumPayingTerm",
-                    "PremiumValidation",
-                    "IncomePeriodPPT8",
-                    "IncomePeriodPPT10And12",
-                    "DefermentPeriod",
-                    # "SumAssuredValidation",
-                    "IncomeShieldPayoutDuration",
-                    "IncomePayoutFrequency",
-                    "AdvanceFeatureOption",
-                    "PlanOptions",
                     "ExistingCustomer",
                     "BandhanLifeEmployee",
+                ]:
+                    ppt_age_ranges, ppt_enabled = {}, {}
+                    row = st.columns([0.8, 2])
+                    with row[0]:
+                        is_selected = st.checkbox(
+                            epic_desc,
+                            value=select_all,
+                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                        )
+                    with row[1]:
+                        if epic_key == "MinimumEntryAge":
+                            age_val = st.slider(
+                                "Min Entry Age",
+                                0,
+                                80,
+                                min_entry_age_val,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MinEntryAge_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumEntryAgePlanOption1":
+                            age_val = st.slider(
+                                "Max Entry Age Option 1",
+                                0,
+                                80,
+                                max_entry_age_opt1,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxEntryAgeOpt1_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumEntryAgePlanOption2":
+                            age_val = st.slider(
+                                "Max Entry Age Option 2",
+                                0,
+                                80,
+                                max_entry_age_opt2,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxEntryAgeOpt2_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumEntryAgePlanOption3":
+                            age_val = st.slider(
+                                "Max Entry Age Option 3",
+                                0,
+                                80,
+                                max_entry_age_opt3,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxEntryAgeOpt3_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumEntryAgePlanOption4":
+                            age_val = st.slider(
+                                "Max Entry Age Option 4",
+                                0,
+                                80,
+                                max_entry_age_opt4,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxEntryAgeOpt4_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MinimumMaturityAge":
+                            age_val = st.slider(
+                                "Maturity Age",
+                                0,
+                                80,
+                                min_maturity_age_val,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MinimumMaturityAge_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumMaturityAgePlanOption1":
+                            age_val = st.slider(
+                                "Max Maturity Age Option 1",
+                                0,
+                                80,
+                                max_maturity_age_opt1,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxMaturityAgeOpt1_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumMaturityAgePlanOption2":
+                            age_val = st.slider(
+                                "Max Maturity Age Option 2",
+                                0,
+                                80,
+                                max_maturity_age_opt2,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxMaturityAgeOpt2_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumMaturityAgePlanOption3":
+                            age_val = st.slider(
+                                "Max Maturity Age Option 3",
+                                0,
+                                80,
+                                max_maturity_age_opt3,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxMaturityAgeOpt3_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "MaximumMaturityAgePlanOption4":
+                            age_val = st.slider(
+                                "Max Maturity Age Option 4",
+                                0,
+                                80,
+                                max_maturity_age_opt4,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxMaturityAgeOpt4_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "ExistingCustomer":
+                            age_val = st.slider(
+                                "Existing Customer",
+                                0,
+                                80,
+                                existing_customer_age,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxMaturityAgeOpt4_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        elif epic_key == "BandhanLifeEmployee":
+                            age_val = st.slider(
+                                "Bandhan Life Employee",
+                                0,
+                                80,
+                                bandhan_employee_age,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"MaxMaturityAgeOpt4_slider_{epic_key}_{ppt}",
+                                ),
+                                label_visibility="collapsed",
+                            )        
+                    if is_selected:
+                        ppt_age_ranges[ppt] = age_val
+                        ppt_enabled[ppt] = True
+                        selected_epics.append(epic_key)
+                        epic_counts[epic_key] = {
+                            "ppt_age_ranges": ppt_age_ranges,
+                            "ppt_enabled": ppt_enabled,
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                        }
+
+                elif epic_key in [
+                    "IncomePeriodPPT8",
+                    "IncomePeriodPPT10And12",
+                    "IncomePayoutFrequency",
+                    "PremiumPayingTerm",
+                    "IncomeShieldPayoutDuration",
+                    "AdvanceFeatureOption",
+                    "CommissionRate"
+                ]:
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    if is_selected:
+                        selected_epics.append(epic_key)
+                        epic_counts[epic_key] = {
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                        }
+                elif epic_key == "PaymentFrequency":
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    frequency_options = [
+                        "Annual",
+                        "Half-Yearly",
+                        "Quarterly",
+                        "Monthly",
+                        # "Single Pay",
+                    ]
+                    frequency_map = {
+                        "Annual": 1,
+                        "Half-Yearly": 2,
+                        "Quarterly": 3,
+                        "Monthly": 4,
+                        # "Single Pay": 5,
+                    }
+                    freq_cols = st.columns(len(frequency_options) + 1)
+                    selected_frequencies = []
+                    for i, freq in enumerate(frequency_options):
+                        with freq_cols[i + 1]:
+                            if st.checkbox(
+                                freq,
+                                value=is_selected,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix, f"freq_cb_{freq}"
+                                ),
+                            ):
+                                selected_frequencies.append(freq)
+
+                    mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
+
+                    if is_selected:
+                        selected_epics.append(epic_key)
+                        epic_counts[epic_key] = {
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                            "payment_frequency_options": mapped_frequencies,
+                        }
+                elif epic_key == "PlanOptions":
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    plan_option_options = [
+                        "CareerStart Income",
+                        "CareerStart Health Shield Income",
+                        "CareerStart Secure Income",
+                        "CareerStart Life Shield Income",
+                    ]
+                    plan_option_cols = st.columns(len(plan_option_options) + 1)
+                    selected_plan_options = []
+                    for i, option in enumerate(plan_option_options):
+                        with plan_option_cols[i + 1]:
+                            if st.checkbox(
+                                option,
+                                value=is_selected,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix, f"plan_option_cb_{option}"
+                                ),
+                            ):
+                                selected_plan_options.append(option)
+                    if is_selected:
+                        selected_epics.append(epic_key)
+                        epic_counts[epic_key] = {
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                            "plan_option_options": selected_plan_options,
+                        }
+                elif epic_key == "SumAssuredValidation":
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    if is_selected:
+                        cols = st.columns([1, 1])
+                        with cols[0]:
+                            min_val = st.number_input(
+                                "Min Value",
+                                min_value=0,
+                                value=sum_assured_ranges["Others"][0],
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix, f"min_val_{epic_key}"
+                                ),
+                            )
+                        with cols[1]:
+                            max_val = st.number_input(
+                                "Max Value",
+                                min_value=min_val,
+                                value=sum_assured_ranges["Others"][1],
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix, f"max_val_{epic_key}"
+                                ),
+                            )
+                        selected_epics.append(epic_key)
+                        if epic_key not in epic_counts:
+                            epic_counts[epic_key] = {}
+                        epic_counts[epic_key] = {
+                            "min_val": min_val,
+                            "max_val": max_val,
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                        }
+                elif epic_key == "PremiumValidation":
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    if is_selected:
+                        cols = st.columns([1, 1])
+                        with cols[0]:
+                            min_val = st.number_input(
+                                "Min Value",
+                                min_value=0,
+                                value=premium_validation_range[0],
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix, f"min_val_{epic_key}"
+                                ),
+                            )
+                        with cols[1]:
+                            max_val = st.number_input(
+                                "Max Value",
+                                min_value=min_val,
+                                value=premium_validation_range[1],
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix, f"max_val_{epic_key}"
+                                ),
+                            )
+                        selected_epics.append(epic_key)
+                        if epic_key not in epic_counts:
+                            epic_counts[epic_key] = {}
+                        epic_counts[epic_key] = {
+                            "min_val": min_val,
+                            "max_val": max_val,
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                        }                             
+            else:    # For term and ulip plans, show sliders for all PPT configurations
+                if epic_key in [
+                    "EntryAge",
+                    "PremiumPayingTerm",
+                    "PolicyTerm",
+                    "MaturityAge",
                 ]:
                     is_selected = st.checkbox(
                         epic_desc,
@@ -1510,43 +1858,40 @@ def render_base_plan_epics(
                         key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
                     )
                     with st.expander("Show/Hide PPT Configuration", expanded=False):
-                        ppt_age_ranges, ppt_pos_counts, ppt_neg_counts, ppt_enabled = (
-                            {},
-                            {},
-                            {},
-                            {},
-                        )
-
-                        header = st.columns([0.5, 2, 2, 1, 1])
-                        with header[1]:
-                            st.markdown("**PPT Name**")
-                        with header[2]:
-                            st.markdown("**Min/Max**")
-                        with header[3]:
-                            st.markdown("**Pos**")
-                        with header[4]:
-                            st.markdown("**Neg**")
+                        ppt_age_ranges, ppt_enabled = {}, {}
 
                         for ppt in ppt_names:
-                            row = st.columns([0.5, 2, 2, 1, 1])
+                            row = st.columns([0.5, 2, 2])
                             with row[0]:
                                 enabled = st.checkbox(
                                     "Enable",
                                     value=is_selected,
                                     key=lifecycle_key(
                                         lifecycle_key_prefix,
-                                        f"ppt_enabled_{epic_key}_{ppt}",
+                                        f"ppt_enabled_all_{epic_key}_{ppt}",
                                     ),
                                     label_visibility="collapsed",
                                 )
                             with row[1]:
                                 st.markdown(ppt)
                             with row[2]:
-                                if epic_key == "PolicyTerm":
+                                if epic_key == "EntryAge":
                                     min_age, max_age = st.slider(
-                                        "Policy Term",
+                                        "Entry Age",
                                         0,
                                         85,
+                                        entry_age_ppt_ranges[ppt],
+                                        key=lifecycle_key(
+                                            lifecycle_key_prefix,
+                                            f"entry_age_slider_{epic_key}_{ppt}",
+                                        ),
+                                        label_visibility="collapsed",
+                                    )
+                                elif epic_key == "PolicyTerm":
+                                    min_age, max_age = st.slider(
+                                        "Policy Term",
+                                        5,
+                                        80,
                                         policy_term_ppt_ranges[ppt],
                                         key=lifecycle_key(
                                             lifecycle_key_prefix,
@@ -1554,311 +1899,18 @@ def render_base_plan_epics(
                                         ),
                                         label_visibility="collapsed",
                                     )
-                                elif epic_key == "EntryAge":
-                                    default_min = entry_age_ppt_ranges[ppt][0]
-                                    default_max = entry_age_ppt_ranges[ppt][1]
-                                    min_age = st.number_input(
-                                        "Min Entry Age",
-                                        min_value=0,
-                                        max_value=120,
-                                        value=default_min,
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"entry_age_min_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                    # When a saving plan and plan option selected, limit max to plan-option max
-                                    max_limit = entry_age_ppt_ranges[ppt][1]
-                                    max_age = st.number_input(
-                                        "Max Entry Age",
-                                        min_value=min_age,
-                                        max_value=120,
-                                        value=default_max,
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"entry_age_max_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaximumEntryAgePlanOption1":
-                                    min_age, max_age = st.slider(
-                                        "MaximumEntryAgePlanOption1",
-                                        18,
-                                        90,
-                                        entry_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaximumEntryAgePlanOption2":
-                                    min_age, max_age = st.slider(
-                                        "MaximumEntryAgePlanOption2",
-                                        18,
-                                        90,
-                                        entry_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )    
-                                elif epic_key == "MaximumEntryAgePlanOption3":
-                                    min_age, max_age = st.slider(
-                                        "MaximumEntryAgePlanOption3",
-                                        18,
-                                        90,
-                                        entry_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaximumEntryAgePlanOption4":
-                                    min_age, max_age = st.slider(
-                                        "MaximumEntryAgePlanOption4",
-                                        18,
-                                        90,
-                                        entry_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "ChildEntryAge":
-                                    min_age, max_age = st.slider(
-                                        "Child Entry Age",
-                                        0,
-                                        25,
-                                        entry_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"child_entry_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
                                 elif epic_key == "MaturityAge":
-                                    default_min = maturity_age_ppt_ranges[ppt][0]
-                                    default_max = maturity_age_ppt_ranges[ppt][1]
-                                    min_age = st.number_input(
-                                        "Min Maturity Age",
-                                        min_value=0,
-                                        max_value=120,
-                                        value=default_min,
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_min_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                    max_age = st.number_input(
-                                        "Max Maturity Age",
-                                        min_value=min_age,
-                                        max_value=120,
-                                        value=default_max,
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_max_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaximumMaturityAgePlanOption1":
                                     min_age, max_age = st.slider(
-                                        "Maximum Maturity Age Plan Option 1",
-                                        18,
+                                        "Maturity Age",
+                                        1,
                                         90,
                                         maturity_age_ppt_ranges[ppt],
                                         key=lifecycle_key(
                                             lifecycle_key_prefix,
-                                            f"max_maturity_age_slider_{epic_key}_{ppt}",
+                                            f"maturity_age_slider_{epic_key}_{ppt}",
                                         ),
                                         label_visibility="collapsed",
                                     )
-                                elif epic_key == "MaximumMaturityAgePlanOption2":
-                                    min_age, max_age = st.slider(
-                                        "Maximum Maturity Age Plan Option 2",
-                                        18,
-                                        90,
-                                        maturity_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"max_maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaximumMaturityAgePlanOption3":   
-                                    min_age, max_age = st.slider(
-                                        "Maximum Maturity Age Plan Option 3",
-                                        18,
-                                        90,
-                                        maturity_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"max_maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaximumMaturityAgePlanOption4":
-                                    min_age, max_age = st.slider(
-                                        "Maximum Maturity Age Plan Option 4",
-                                        18,
-                                        90,
-                                        maturity_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"max_maturity_age_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                # elif epic_key == "PaymentFrequency":
-                                #     min_age, max_age = st.slider(
-                                #         "Payment Frequency",
-                                #         1,
-                                #         85,
-                                #         premium_paying_ppt_ranges[ppt],
-                                #         key=lifecycle_key(
-                                #             lifecycle_key_prefix,
-                                #             f"payment_frequency_slider_{epic_key}_{ppt}",
-                                #         ),
-                                #         label_visibility="collapsed",
-                                #     )    
-                                elif epic_key == "PremiumPayingTerm":
-                                    min_age, max_age = st.slider(
-                                        "Premium Paying Term",
-                                        1,
-                                        85,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"premium_paying_term_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "PremiumValidation":
-                                    min_age, max_age = st.slider(
-                                        "Premium Validation",
-                                        1,
-                                        85,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"premium_validation_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )    
-                                elif epic_key == "IncomePeriodPPT8":
-                                    min_age, max_age = st.slider(
-                                        "Income Period PPT 8",
-                                        1,
-                                        85,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"income_period_ppt_8_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "IncomePeriodPPT10And12":
-                                    min_age, max_age = st.slider(
-                                        "Income Period PPT 10 and 12",
-                                        1,
-                                        85,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"income_period_ppt_10_12_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )           
-                                elif  epic_key == "DefermentPeriod":
-                                    min_age, max_age = st.slider(
-                                        "Deferment Period",
-                                        0,
-                                        30,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"deferment_period_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )   
-                                  
-                                elif epic_key == "IncomeShieldPayoutDuration":
-                                    min_age, max_age = st.slider(
-                                        "Income Shield Payout Duration",
-                                        1,
-                                        40,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"income_shield_payout_duration_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "IncomePayoutFrequency":       
-                                    min_age, max_age = st.slider(
-                                        "Income Payout Frequency",
-                                        1,
-                                        12,
-                                        premium_paying_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"income_payout_frequency_slider_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )    
-                                elif epic_key == "AdvanceFeatureOption":    
-                                        min_age, max_age = st.slider(
-                                            "Advance Feature Option",
-                                            1,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"advance_feature_option_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                elif epic_key == "PlanOptions":   
-                                        min_age, max_age = st.slider(
-                                            "Plan Options",
-                                            1,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"plan_options_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                elif epic_key == "ExistingCustomer":    
-                                        min_age, max_age = st.slider(
-                                            "Existing Customer",
-                                            1,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"existing_customer_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                elif epic_key == "BandhanLifeEmployee":
-                                        min_age, max_age = st.slider(
-                                            "Bandhan Life Employee",
-                                            1,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"bandhan_life_employee_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )                                                                                              
                                 else:
                                     if (
                                         premium_paying_ppt_ranges[ppt][0]
@@ -1887,33 +1939,8 @@ def render_base_plan_epics(
                                             ),
                                             label_visibility="collapsed",
                                         )
-                            with row[3]:
-                                pos = st.number_input(
-                                    "Pos",
-                                    0,
-                                    value=5,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"epic_pos_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row[4]:
-                                neg = st.number_input(
-                                    "Neg",
-                                    0,
-                                    value=5,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"epic_neg_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-
                             if enabled:
                                 ppt_age_ranges[ppt] = (min_age, max_age)
-                                ppt_pos_counts[ppt] = pos
-                                ppt_neg_counts[ppt] = neg
                                 ppt_enabled[ppt] = True
                             else:
                                 ppt_enabled[ppt] = False
@@ -1922,84 +1949,58 @@ def render_base_plan_epics(
                             selected_epics.append(epic_key)
                             epic_counts[epic_key] = {
                                 "ppt_age_ranges": ppt_age_ranges,
-                                "ppt_pos_counts": ppt_pos_counts,
-                                "ppt_neg_counts": ppt_neg_counts,
                                 "ppt_enabled": ppt_enabled,
+                                "positive": num_positive_global,
+                                "negative": num_negative_global,
                             }
-                            if (
-                                plan_type == "saving plan"
-                                and selected_plan_option
-                                and epic_key in ["EntryAge", "MaturityAge"]
-                            ):
-                                epic_counts[epic_key]["plan_option"] = (
-                                    selected_plan_option
-                                )
 
                 elif epic_key == "PaymentFrequency":
-                    row = st.columns([2, 1.5, 1.5])
-                    with row[0]:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                    with row[1]:
-                        pos_count = st.number_input(
-                            f"Pos {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_pos_{epic_key}"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Pos",
-                        )
-                    with row[2]:
-                        neg_count = st.number_input(
-                            f"Neg {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_neg_{epic_key}"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Neg",
-                        )
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    if is_ultima_care:
+                        # Positive cases are yearly only; the negative cases cover
+                        # every other frequency, so there is nothing to choose.
+                        mapped_frequencies = [1]
+                    else:
+                        frequency_options = [
+                            "Annual",
+                            "Half-Yearly",
+                            "Quarterly",
+                            "Monthly",
+                            "Single Pay",
+                        ]
+                        frequency_map = {
+                            "Annual": 1,
+                            "Half-Yearly": 2,
+                            "Quarterly": 3,
+                            "Monthly": 4,
+                            "Single Pay": 5,
+                        }
+                        freq_cols = st.columns(len(frequency_options) + 1)
+                        selected_frequencies = []
+                        for i, freq in enumerate(frequency_options):
+                            with freq_cols[i + 1]:
+                                if st.checkbox(
+                                    freq,
+                                    value=is_selected,
+                                    key=lifecycle_key(
+                                        lifecycle_key_prefix, f"freq_cb_{freq}"
+                                    ),
+                                ):
+                                    selected_frequencies.append(freq)
 
-                    frequency_options = [
-                        "Annual",
-                        "Half-Yearly",
-                        "Quarterly",
-                        "Monthly",
-                        "Single Pay",
-                    ]
-                    frequency_map = {
-                        "Annual": 1,
-                        "Half-Yearly": 2,
-                        "Quarterly": 3,
-                        "Monthly": 4,
-                        "Single Pay": 5,
-                    }
-                    freq_cols = st.columns(len(frequency_options) + 1)
-                    selected_frequencies = []
-                    for i, freq in enumerate(frequency_options):
-                        with freq_cols[i + 1]:
-                            if st.checkbox(
-                                freq,
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"freq_cb_{freq}"
-                                ),
-                            ):
-                                selected_frequencies.append(freq)
-
-                    mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
+                        mapped_frequencies = [
+                            frequency_map[f] for f in selected_frequencies
+                        ]
 
                     if is_selected:
                         selected_epics.append(epic_key)
                         epic_counts[epic_key] = {
-                            "positive": pos_count,
-                            "negative": neg_count,
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
                             "payment_frequency_options": mapped_frequencies,
                         }
 
@@ -2010,19 +2011,15 @@ def render_base_plan_epics(
                         key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
                     )
                     with st.expander("Show/Hide PPT Configuration", expanded=False):
-                        header = st.columns([0.5, 2, 1, 1, 1, 1])
+                        header = st.columns([0.5, 2, 1, 1])
                         with header[1]:
                             st.markdown("**PPT Type**")
                         with header[2]:
                             st.markdown("**Min**")
                         with header[3]:
                             st.markdown("**Max**")
-                        with header[4]:
-                            st.markdown("**Pos**")
-                        with header[5]:
-                            st.markdown("**Neg**")
 
-                        row_sp = st.columns([0.5, 2, 1, 1, 1, 1])
+                        row_sp = st.columns([0.5, 2, 1, 1])
                         with row_sp[0]:
                             sp = st.checkbox(
                                 "Enable",
@@ -2054,28 +2051,8 @@ def render_base_plan_epics(
                                 ),
                                 label_visibility="collapsed",
                             )
-                        with row_sp[4]:
-                            pos_sp = st.number_input(
-                                "Pos SinglePay",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"pos_sp_{epic_key}"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[5]:
-                            neg_sp = st.number_input(
-                                "Neg SinglePay",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"neg_sp_{epic_key}"
-                                ),
-                                label_visibility="collapsed",
-                            )
 
-                        row_oth = st.columns([0.5, 2, 1, 1, 1, 1])
+                        row_oth = st.columns([0.5, 2, 1, 1])
                         with row_oth[0]:
                             oth = st.checkbox(
                                 "Enable",
@@ -2107,26 +2084,6 @@ def render_base_plan_epics(
                                 ),
                                 label_visibility="collapsed",
                             )
-                        with row_oth[4]:
-                            pos_oth = st.number_input(
-                                "Pos Others",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"pos_oth_{epic_key}"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[5]:
-                            neg_oth = st.number_input(
-                                "Neg Others",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"neg_oth_{epic_key}"
-                                ),
-                                label_visibility="collapsed",
-                            )
 
                         if is_selected:
                             selected_epics.append(epic_key)
@@ -2136,724 +2093,28 @@ def render_base_plan_epics(
                                 epic_counts[epic_key]["Single Pay"] = {
                                     "min_val": min_sp,
                                     "max_val": max_sp,
-                                    "positive": pos_sp,
-                                    "negative": neg_sp,
+                                    "positive": num_positive_global,
+                                    "negative": num_negative_global,
                                 }
                             if oth:
                                 epic_counts[epic_key]["Others"] = {
                                     "min_val": min_oth,
                                     "max_val": max_oth,
-                                    "positive": pos_oth,
-                                    "negative": neg_oth,
-                                }
-                else:
-                    row = st.columns([2, 1.5, 1.5])
-                    with row[0]:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                    with row[1]:
-                        pos_count = st.number_input(
-                            f"Pos {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_pos_{epic_key}"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Pos",
-                        )
-                    with row[2]:
-                        neg_count = st.number_input(
-                            f"Neg {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_neg_{epic_key}"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Neg",
-                        )
-                    if is_selected:
-                        selected_epics.append(epic_key)
-                        epic_counts[epic_key] = {
-                            "positive": pos_count,
-                            "negative": neg_count,
-                        }
-
-            else:  # Apply Same Count to All Epics
-                if plan_type == "saving plan":
-                    ppt="Regular Pay"  # For saving plan, show sliders for Regular Pay configuration as default
-                    if epic_key in [
-                        "PolicyTerm",
-                        "DefermentPeriod",
-                        "ChildEntryAge"
-                    ]:  
-                        ppt_age_ranges, ppt_enabled = {}, {}
-                        row = st.columns([0.8, 2])
-                        with row[0]:
-                            is_selected = st.checkbox(
-                                epic_desc,
-                                value=select_all,
-                                key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                            )
-                        with row[1]:
-                            if epic_key == "PolicyTerm":
-                                min_age, max_age = st.slider(
-                                    "Policy Term",
-                                    5,
-                                    80,
-                                    policy_term_ppt_ranges[ppt],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"entry_age_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                                    
-                            elif epic_key == "ChildEntryAge":
-                                min_age = st.slider(
-                                    "ChildEntryAge",
-                                    5,
-                                    80,
-                                    child_entry_age,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"ChildEntryAge_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-
-                            elif epic_key == "DefermentPeriod":
-                                min_age, max_age = st.slider(
-                                    "Deferment Period",
-                                    0,
-                                    20,
-                                    DefermentPeriod_ranges,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"DefermentPeriod_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-
-                        if is_selected:
-                            ppt_age_ranges[ppt] = (min_age, max_age)
-                            ppt_enabled[ppt] = True
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "ppt_age_ranges": ppt_age_ranges,
-                                "ppt_enabled": ppt_enabled,
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                            }
-
-                    elif epic_key in [
-                        "MinimumEntryAge",
-                        "MaximumEntryAgePlanOption1",
-                        "MaximumEntryAgePlanOption2",
-                        "MaximumEntryAgePlanOption3",
-                        "MaximumEntryAgePlanOption4",
-                        "MinimumMaturityAge",
-                        "MaximumMaturityAgePlanOption1",
-                        "MaximumMaturityAgePlanOption2",
-                        "MaximumMaturityAgePlanOption3",
-                        "MaximumMaturityAgePlanOption4",
-                        "ExistingCustomer",
-                        "BandhanLifeEmployee",
-                    ]:
-                        ppt_age_ranges, ppt_enabled = {}, {}
-                        row = st.columns([0.8, 2])
-                        with row[0]:
-                            is_selected = st.checkbox(
-                                epic_desc,
-                                value=select_all,
-                                key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                            )
-                        with row[1]:
-                            if epic_key == "MinimumEntryAge":
-                                age_val = st.slider(
-                                    "Min Entry Age",
-                                    0,
-                                    80,
-                                    min_entry_age_val,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MinEntryAge_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumEntryAgePlanOption1":
-                                age_val = st.slider(
-                                    "Max Entry Age Option 1",
-                                    0,
-                                    80,
-                                    max_entry_age_opt1,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxEntryAgeOpt1_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumEntryAgePlanOption2":
-                                age_val = st.slider(
-                                    "Max Entry Age Option 2",
-                                    0,
-                                    80,
-                                    max_entry_age_opt2,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxEntryAgeOpt2_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumEntryAgePlanOption3":
-                                age_val = st.slider(
-                                    "Max Entry Age Option 3",
-                                    0,
-                                    80,
-                                    max_entry_age_opt3,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxEntryAgeOpt3_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumEntryAgePlanOption4":
-                                age_val = st.slider(
-                                    "Max Entry Age Option 4",
-                                    0,
-                                    80,
-                                    max_entry_age_opt4,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxEntryAgeOpt4_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MinimumMaturityAge":
-                                age_val = st.slider(
-                                    "Maturity Age",
-                                    0,
-                                    80,
-                                    min_maturity_age_val,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MinimumMaturityAge_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumMaturityAgePlanOption1":
-                                age_val = st.slider(
-                                    "Max Maturity Age Option 1",
-                                    0,
-                                    80,
-                                    max_maturity_age_opt1,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxMaturityAgeOpt1_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumMaturityAgePlanOption2":
-                                age_val = st.slider(
-                                    "Max Maturity Age Option 2",
-                                    0,
-                                    80,
-                                    max_maturity_age_opt2,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxMaturityAgeOpt2_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumMaturityAgePlanOption3":
-                                age_val = st.slider(
-                                    "Max Maturity Age Option 3",
-                                    0,
-                                    80,
-                                    max_maturity_age_opt3,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxMaturityAgeOpt3_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "MaximumMaturityAgePlanOption4":
-                                age_val = st.slider(
-                                    "Max Maturity Age Option 4",
-                                    0,
-                                    80,
-                                    max_maturity_age_opt4,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxMaturityAgeOpt4_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "ExistingCustomer":
-                                age_val = st.slider(
-                                    "Existing Customer",
-                                    0,
-                                    80,
-                                    existing_customer_age,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxMaturityAgeOpt4_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            elif epic_key == "BandhanLifeEmployee":
-                                age_val = st.slider(
-                                    "Bandhan Life Employee",
-                                    0,
-                                    80,
-                                    bandhan_employee_age,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"MaxMaturityAgeOpt4_slider_{epic_key}_{ppt}",
-                                    ),
-                                    label_visibility="collapsed",
-                                )        
-                        if is_selected:
-                            ppt_age_ranges[ppt] = age_val
-                            ppt_enabled[ppt] = True
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "ppt_age_ranges": ppt_age_ranges,
-                                "ppt_enabled": ppt_enabled,
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                            }
-
-                    elif epic_key in [
-                        "IncomePeriodPPT8",
-                        "IncomePeriodPPT10And12",
-                        "IncomePayoutFrequency",
-                        "PremiumPayingTerm",
-                        "IncomeShieldPayoutDuration",
-                        "AdvanceFeatureOption",
-                        "CommissionRate"
-                    ]:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        if is_selected:
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                            }
-                    elif epic_key == "PaymentFrequency":
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        frequency_options = [
-                            "Annual",
-                            "Half-Yearly",
-                            "Quarterly",
-                            "Monthly",
-                            # "Single Pay",
-                        ]
-                        frequency_map = {
-                            "Annual": 1,
-                            "Half-Yearly": 2,
-                            "Quarterly": 3,
-                            "Monthly": 4,
-                            # "Single Pay": 5,
-                        }
-                        freq_cols = st.columns(len(frequency_options) + 1)
-                        selected_frequencies = []
-                        for i, freq in enumerate(frequency_options):
-                            with freq_cols[i + 1]:
-                                if st.checkbox(
-                                    freq,
-                                    value=is_selected,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"freq_cb_{freq}"
-                                    ),
-                                ):
-                                    selected_frequencies.append(freq)
-
-                        mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
-
-                        if is_selected:
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                                "payment_frequency_options": mapped_frequencies,
-                            }
-                    elif epic_key == "PlanOptions":
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        plan_option_options = [
-                            "CareerStart Income",
-                            "CareerStart Health Shield Income",
-                            "CareerStart Secure Income",
-                            "CareerStart Life Shield Income",
-                        ]
-                        plan_option_cols = st.columns(len(plan_option_options) + 1)
-                        selected_plan_options = []
-                        for i, option in enumerate(plan_option_options):
-                            with plan_option_cols[i + 1]:
-                                if st.checkbox(
-                                    option,
-                                    value=is_selected,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"plan_option_cb_{option}"
-                                    ),
-                                ):
-                                    selected_plan_options.append(option)
-                        if is_selected:
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                                "plan_option_options": selected_plan_options,
-                            }
-                    elif epic_key == "SumAssuredValidation":
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        if is_selected:
-                            cols = st.columns([1, 1])
-                            with cols[0]:
-                                min_val = st.number_input(
-                                    "Min Value",
-                                    min_value=0,
-                                    value=sum_assured_ranges["Others"][0],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"min_val_{epic_key}"
-                                    ),
-                                )
-                            with cols[1]:
-                                max_val = st.number_input(
-                                    "Max Value",
-                                    min_value=min_val,
-                                    value=sum_assured_ranges["Others"][1],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"max_val_{epic_key}"
-                                    ),
-                                )
-                            selected_epics.append(epic_key)
-                            if epic_key not in epic_counts:
-                                epic_counts[epic_key] = {}
-                            epic_counts[epic_key] = {
-                                "min_val": min_val,
-                                "max_val": max_val,
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                            }
-                    elif epic_key == "PremiumValidation":
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        if is_selected:
-                            cols = st.columns([1, 1])
-                            with cols[0]:
-                                min_val = st.number_input(
-                                    "Min Value",
-                                    min_value=0,
-                                    value=premium_validation_range[0],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"min_val_{epic_key}"
-                                    ),
-                                )
-                            with cols[1]:
-                                max_val = st.number_input(
-                                    "Max Value",
-                                    min_value=min_val,
-                                    value=premium_validation_range[1],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"max_val_{epic_key}"
-                                    ),
-                                )
-                            selected_epics.append(epic_key)
-                            if epic_key not in epic_counts:
-                                epic_counts[epic_key] = {}
-                            epic_counts[epic_key] = {
-                                "min_val": min_val,
-                                "max_val": max_val,
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                            }                             
-                else:    # For term and ulip plans, show sliders for all PPT configurations
-                    if epic_key in [
-                        "EntryAge",
-                        "PremiumPayingTerm",
-                        "PolicyTerm",
-                        "MaturityAge",
-                    ]:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        with st.expander("Show/Hide PPT Configuration", expanded=False):
-                            ppt_age_ranges, ppt_enabled = {}, {}
-
-                            for ppt in ppt_names:
-                                row = st.columns([0.5, 2, 2])
-                                with row[0]:
-                                    enabled = st.checkbox(
-                                        "Enable",
-                                        value=is_selected,
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"ppt_enabled_all_{epic_key}_{ppt}",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                with row[1]:
-                                    st.markdown(ppt)
-                                with row[2]:
-                                    if epic_key == "EntryAge":
-                                        min_age, max_age = st.slider(
-                                            "Entry Age",
-                                            0,
-                                            85,
-                                            entry_age_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"entry_age_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                    elif epic_key == "PolicyTerm":
-                                        min_age, max_age = st.slider(
-                                            "Policy Term",
-                                            5,
-                                            80,
-                                            policy_term_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"entry_age_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                    elif epic_key == "MaturityAge":
-                                        min_age, max_age = st.slider(
-                                            "Maturity Age",
-                                            1,
-                                            90,
-                                            maturity_age_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"maturity_age_slider_{epic_key}_{ppt}",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                    else:
-                                        if (
-                                            premium_paying_ppt_ranges[ppt][0]
-                                            == premium_paying_ppt_ranges[ppt][1]
-                                        ):
-                                            min_age = max_age = st.slider(
-                                                "Entry Age",
-                                                0,
-                                                85,
-                                                premium_paying_ppt_ranges[ppt][0],
-                                                key=lifecycle_key(
-                                                    lifecycle_key_prefix,
-                                                    f"entry_age_slider_{epic_key}_{ppt}",
-                                                ),
-                                                label_visibility="collapsed",
-                                            )
-                                        else:
-                                            min_age, max_age = st.slider(
-                                                "Entry Age",
-                                                0,
-                                                85,
-                                                premium_paying_ppt_ranges[ppt],
-                                                key=lifecycle_key(
-                                                    lifecycle_key_prefix,
-                                                    f"entry_age_slider_{epic_key}_{ppt}",
-                                                ),
-                                                label_visibility="collapsed",
-                                            )
-                                if enabled:
-                                    ppt_age_ranges[ppt] = (min_age, max_age)
-                                    ppt_enabled[ppt] = True
-                                else:
-                                    ppt_enabled[ppt] = False
-
-                            if is_selected and any(ppt_enabled.values()):
-                                selected_epics.append(epic_key)
-                                epic_counts[epic_key] = {
-                                    "ppt_age_ranges": ppt_age_ranges,
-                                    "ppt_enabled": ppt_enabled,
                                     "positive": num_positive_global,
                                     "negative": num_negative_global,
                                 }
-
-                    elif epic_key == "PaymentFrequency":
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        frequency_options = [
-                            "Annual",
-                            "Half-Yearly",
-                            "Quarterly",
-                            "Monthly",
-                            "Single Pay",
-                        ]
-                        frequency_map = {
-                            "Annual": 1,
-                            "Half-Yearly": 2,
-                            "Quarterly": 3,
-                            "Monthly": 4,
-                            "Single Pay": 5,
+                else:
+                    is_selected = st.checkbox(
+                        epic_desc,
+                        value=select_all,
+                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
+                    )
+                    if is_selected:
+                        selected_epics.append(epic_key)
+                        epic_counts[epic_key] = {
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
                         }
-                        freq_cols = st.columns(len(frequency_options) + 1)
-                        selected_frequencies = []
-                        for i, freq in enumerate(frequency_options):
-                            with freq_cols[i + 1]:
-                                if st.checkbox(
-                                    freq,
-                                    value=is_selected,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"freq_cb_{freq}"
-                                    ),
-                                ):
-                                    selected_frequencies.append(freq)
-
-                        mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
-
-                        if is_selected:
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                                "payment_frequency_options": mapped_frequencies,
-                            }
-
-                    elif epic_key == "SumAssuredValidation":
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        with st.expander("Show/Hide PPT Configuration", expanded=False):
-                            header = st.columns([0.5, 2, 1, 1])
-                            with header[1]:
-                                st.markdown("**PPT Type**")
-                            with header[2]:
-                                st.markdown("**Min**")
-                            with header[3]:
-                                st.markdown("**Max**")
-
-                            row_sp = st.columns([0.5, 2, 1, 1])
-                            with row_sp[0]:
-                                sp = st.checkbox(
-                                    "Enable",
-                                    value=is_selected,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"sa_enabled_{epic_key}"
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row_sp[1]:
-                                st.markdown("SinglePay")
-                            with row_sp[2]:
-                                min_sp = st.number_input(
-                                    "Min SinglePay",
-                                    min_value=0,
-                                    value=sum_assured_ranges["Single Pay"][0],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"min_sp_{epic_key}"
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row_sp[3]:
-                                max_sp = st.number_input(
-                                    "Max SinglePay",
-                                    min_value=min_sp,
-                                    value=sum_assured_ranges["Single Pay"][1],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"max_sp_{epic_key}"
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-
-                            row_oth = st.columns([0.5, 2, 1, 1])
-                            with row_oth[0]:
-                                oth = st.checkbox(
-                                    "Enable",
-                                    value=is_selected,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"oth_enabled_{epic_key}"
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row_oth[1]:
-                                st.markdown("Others")
-                            with row_oth[2]:
-                                min_oth = st.number_input(
-                                    "Min Others",
-                                    min_value=0,
-                                    value=sum_assured_ranges["Others"][0],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"min_oth_{epic_key}"
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row_oth[3]:
-                                max_oth = st.number_input(
-                                    "Max Others",
-                                    min_value=min_oth,
-                                    value=sum_assured_ranges["Others"][1],
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix, f"max_oth_{epic_key}"
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-
-                            if is_selected:
-                                selected_epics.append(epic_key)
-                                if epic_key not in epic_counts:
-                                    epic_counts[epic_key] = {}
-                                if sp:
-                                    epic_counts[epic_key]["Single Pay"] = {
-                                        "min_val": min_sp,
-                                        "max_val": max_sp,
-                                        "positive": num_positive_global,
-                                        "negative": num_negative_global,
-                                    }
-                                if oth:
-                                    epic_counts[epic_key]["Others"] = {
-                                        "min_val": min_oth,
-                                        "max_val": max_oth,
-                                        "positive": num_positive_global,
-                                        "negative": num_negative_global,
-                                    }
-                    else:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all,
-                            key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}"),
-                        )
-                        if is_selected:
-                            selected_epics.append(epic_key)
-                            epic_counts[epic_key] = {
-                                "positive": num_positive_global,
-                                "negative": num_negative_global,
-                            }
 
     return selected_epics, epic_counts
 
@@ -2861,7 +2122,6 @@ def render_base_plan_epics(
 def render_rider_epics(
     logic_module,
     lifecycle_key_prefix,
-    count_mode,
     num_positive_global,
     num_negative_global,
 ):
@@ -2923,680 +2183,275 @@ def render_rider_epics(
     with st.expander("\u2139\ufe0f Configure Rider Epics and Case Counts", expanded=True):
         for epic_key, epic_desc in epic_map_rider.items():
 
-            if count_mode == "Set Individual Counts for Each Epic":
-                if epic_key in [
-                    "EntryAge",
-                    "PremiumPayingTerm",
-                    "PolicyTerm",
-                    "MaturityAge",
-                ]:
-                    is_selected = st.checkbox(
-                        epic_desc,
-                        value=select_all_rider,
-                        key=lifecycle_key(
-                            lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
-                        ),
-                    )
-                    with st.expander("Show/Hide PPT Configuration", expanded=False):
-                        ppt_age_ranges, ppt_pos_counts, ppt_neg_counts, ppt_enabled = (
-                            {},
-                            {},
-                            {},
-                            {},
-                        )
+            if epic_key in [
+                "EntryAge",
+                "PremiumPayingTerm",
+                "PolicyTerm",
+                "MaturityAge",
+            ]:
+                is_selected = st.checkbox(
+                    epic_desc,
+                    value=select_all_rider,
+                    key=lifecycle_key(
+                        lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
+                    ),
+                )
+                with st.expander("Show/Hide PPT Configuration", expanded=False):
+                    ppt_age_ranges, ppt_enabled = {}, {}
 
-                        header = st.columns([0.5, 2, 2, 1, 1])
-                        with header[1]:
-                            st.markdown("**PPT Name**")
-                        with header[2]:
-                            st.markdown("**Min/Max**")
-                        with header[3]:
-                            st.markdown("**Pos**")
-                        with header[4]:
-                            st.markdown("**Neg**")
-
-                        for ppt in ppt_names:
-                            row = st.columns([0.5, 2, 2, 1, 1])
-                            with row[0]:
-                                enabled = st.checkbox(
-                                    "Enable",
-                                    value=is_selected,
+                    for ppt in ppt_names:
+                        row = st.columns([0.5, 2, 2])
+                        with row[0]:
+                            enabled = st.checkbox(
+                                "Enable",
+                                value=is_selected,
+                                key=lifecycle_key(
+                                    lifecycle_key_prefix,
+                                    f"ppt_enabled_all_{epic_key}_{ppt}_rider",
+                                ),
+                                label_visibility="collapsed",
+                            )
+                        with row[1]:
+                            st.markdown(ppt)
+                        with row[2]:
+                            if epic_key == "EntryAge":
+                                min_age, max_age = st.slider(
+                                    "Entry Age",
+                                    0,
+                                    85,
+                                    entry_age_ppt_ranges[ppt],
                                     key=lifecycle_key(
                                         lifecycle_key_prefix,
-                                        f"ppt_enabled_{epic_key}_{ppt}_rider",
+                                        f"entry_age_slider_{epic_key}_{ppt}_rider",
                                     ),
                                     label_visibility="collapsed",
                                 )
-                            with row[1]:
-                                st.markdown(ppt)
-                            with row[2]:
-                                if epic_key == "EntryAge":
-                                    min_age, max_age = st.slider(
+                            elif epic_key == "PolicyTerm":
+                                min_age, max_age = st.slider(
+                                    "Policy Term",
+                                    5,
+                                    80,
+                                    policy_term_ppt_ranges[ppt],
+                                    key=lifecycle_key(
+                                        lifecycle_key_prefix,
+                                        f"entry_age_slider_{epic_key}_{ppt}_rider",
+                                    ),
+                                    label_visibility="collapsed",
+                                )
+                            elif epic_key == "MaturityAge":
+                                min_age, max_age = st.slider(
+                                    "Maturity Age",
+                                    1,
+                                    90,
+                                    maturity_age_ppt_ranges[ppt],
+                                    key=lifecycle_key(
+                                        lifecycle_key_prefix,
+                                        f"maturity_age_slider_{epic_key}_{ppt}_rider",
+                                    ),
+                                    label_visibility="collapsed",
+                                )
+                            else:
+                                if (
+                                    premium_paying_ppt_ranges[ppt][0]
+                                    == premium_paying_ppt_ranges[ppt][1]
+                                ):
+                                    min_age = max_age = st.slider(
                                         "Entry Age",
                                         0,
                                         85,
-                                        entry_age_ppt_ranges[ppt],
+                                        premium_paying_ppt_ranges[ppt][0],
                                         key=lifecycle_key(
                                             lifecycle_key_prefix,
                                             f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "PolicyTerm":
-                                    min_age, max_age = st.slider(
-                                        "Policy Term",
-                                        5,
-                                        80,
-                                        policy_term_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaturityAge":
-                                    min_age, max_age = st.slider(
-                                        "Maturity Age",
-                                        1,
-                                        90,
-                                        maturity_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_slider_{epic_key}_{ppt}_rider",
                                         ),
                                         label_visibility="collapsed",
                                     )
                                 else:
-                                    if (
-                                        premium_paying_ppt_ranges[ppt][0]
-                                        == premium_paying_ppt_ranges[ppt][1]
-                                    ):
-                                        min_age = max_age = st.slider(
-                                            "Entry Age",
-                                            0,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt][0],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                    else:
-                                        min_age, max_age = st.slider(
-                                            "Entry Age",
-                                            0,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                            with row[3]:
-                                pos = st.number_input(
-                                    "Pos",
-                                    0,
-                                    value=5,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"epic_pos_{epic_key}_{ppt}_rider",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row[4]:
-                                neg = st.number_input(
-                                    "Neg",
-                                    0,
-                                    value=5,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"epic_neg_{epic_key}_{ppt}_rider",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
+                                    min_age, max_age = st.slider(
+                                        "Entry Age",
+                                        0,
+                                        85,
+                                        premium_paying_ppt_ranges[ppt],
+                                        key=lifecycle_key(
+                                            lifecycle_key_prefix,
+                                            f"entry_age_slider_{epic_key}_{ppt}_rider",
+                                        ),
+                                        label_visibility="collapsed",
+                                    )
+                        if enabled:
+                            ppt_age_ranges[ppt] = (min_age, max_age)
+                            ppt_enabled[ppt] = True
+                        else:
+                            ppt_enabled[ppt] = False
 
-                            if enabled:
-                                ppt_age_ranges[ppt] = (min_age, max_age)
-                                ppt_pos_counts[ppt] = pos
-                                ppt_neg_counts[ppt] = neg
-                                ppt_enabled[ppt] = True
-                            else:
-                                ppt_enabled[ppt] = False
+                    if is_selected and any(ppt_enabled.values()):
+                        selected_epics_rider.append(epic_key)
+                        epic_counts_rider[epic_key] = {
+                            "ppt_age_ranges": ppt_age_ranges,
+                            "ppt_enabled": ppt_enabled,
+                            "positive": num_positive_global,
+                            "negative": num_negative_global,
+                        }
 
-                        if is_selected and any(ppt_enabled.values()):
-                            selected_epics_rider.append(epic_key)
-                            epic_counts_rider[epic_key] = {
-                                "ppt_age_ranges": ppt_age_ranges,
-                                "ppt_pos_counts": ppt_pos_counts,
-                                "ppt_neg_counts": ppt_neg_counts,
-                                "ppt_enabled": ppt_enabled,
-                            }
-
-                elif epic_key == "PaymentFrequency":
-                    row = st.columns([2, 1.5, 1.5])
-                    with row[0]:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all_rider,
+            elif epic_key == "PaymentFrequency":
+                is_selected = st.checkbox(
+                    epic_desc,
+                    value=select_all_rider,
+                    key=lifecycle_key(
+                        lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
+                    ),
+                )
+                frequency_options = [
+                    "Annual",
+                    "Half-Yearly",
+                    "Quarterly",
+                    "Monthly",
+                    "Single Pay",
+                ]
+                frequency_map = {
+                    "Annual": 1,
+                    "Half-Yearly": 2,
+                    "Quarterly": 3,
+                    "Monthly": 4,
+                    "Single Pay": 5,
+                }
+                freq_cols = st.columns(len(frequency_options) + 1)
+                selected_frequencies = []
+                for i, freq in enumerate(frequency_options):
+                    with freq_cols[i + 1]:
+                        if st.checkbox(
+                            freq,
+                            value=is_selected,
                             key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
+                                lifecycle_key_prefix, f"freq_cb_{freq}_rider"
                             ),
-                        )
-                    with row[1]:
-                        pos_count = st.number_input(
-                            f"Pos {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_pos_{epic_key}_rider"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Pos",
-                        )
-                    with row[2]:
-                        neg_count = st.number_input(
-                            f"Neg {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_neg_{epic_key}_rider"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Neg",
-                        )
+                        ):
+                            selected_frequencies.append(freq)
 
-                    frequency_options = [
-                        "Annual",
-                        "Half-Yearly",
-                        "Quarterly",
-                        "Monthly",
-                        "Single Pay",
-                    ]
-                    frequency_map = {
-                        "Annual": 1,
-                        "Half-Yearly": 2,
-                        "Quarterly": 3,
-                        "Monthly": 4,
-                        "Single Pay": 5,
+                mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
+
+                if is_selected:
+                    selected_epics_rider.append(epic_key)
+                    epic_counts_rider[epic_key] = {
+                        "positive": num_positive_global,
+                        "negative": num_negative_global,
+                        "payment_frequency_options": mapped_frequencies,
                     }
-                    freq_cols = st.columns(len(frequency_options) + 1)
-                    selected_frequencies = []
-                    for i, freq in enumerate(frequency_options):
-                        with freq_cols[i + 1]:
-                            if st.checkbox(
-                                freq,
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"freq_cb_{freq}_rider"
-                                ),
-                            ):
-                                selected_frequencies.append(freq)
 
-                    mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
+            elif epic_key == "SumAssuredValidation":
+                is_selected = st.checkbox(
+                    epic_desc,
+                    value=select_all_rider,
+                    key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"),
+                )
+                with st.expander("Show/Hide PPT Configuration", expanded=False):
+                    header = st.columns([0.5, 2, 1, 1])
+                    with header[1]:
+                        st.markdown("**PPT Type**")
+                    with header[2]:
+                        st.markdown("**Min**")
+                    with header[3]:
+                        st.markdown("**Max**")
+
+                    row_sp = st.columns([0.5, 2, 1, 1])
+                    with row_sp[0]:
+                        sp = st.checkbox(
+                            "Enable",
+                            value=is_selected,
+                            key=lifecycle_key(
+                                lifecycle_key_prefix, f"sa_enabled_{epic_key}_rider"
+                            ),
+                            label_visibility="collapsed",
+                        )
+                    with row_sp[1]:
+                        st.markdown("SinglePay")
+                    with row_sp[2]:
+                        min_sp = st.number_input(
+                            "Min SinglePay",
+                            min_value=0,
+                            value=sum_assured_ranges["Single Pay"][0],
+                            key=lifecycle_key(
+                                lifecycle_key_prefix, f"min_sp_{epic_key}_rider"
+                            ),
+                            label_visibility="collapsed",
+                        )
+                    with row_sp[3]:
+                        max_sp = st.number_input(
+                            "Max SinglePay",
+                            min_value=min_sp,
+                            value=sum_assured_ranges["Single Pay"][1],
+                            key=lifecycle_key(
+                                lifecycle_key_prefix, f"max_sp_{epic_key}_rider"
+                            ),
+                            label_visibility="collapsed",
+                        )
+
+                    row_oth = st.columns([0.5, 2, 1, 1])
+                    with row_oth[0]:
+                        oth = st.checkbox(
+                            "Enable",
+                            value=is_selected,
+                            key=lifecycle_key(
+                                lifecycle_key_prefix, f"oth_enabled_{epic_key}_rider"
+                            ),
+                            label_visibility="collapsed",
+                        )
+                    with row_oth[1]:
+                        st.markdown("Others")
+                    with row_oth[2]:
+                        min_oth = st.number_input(
+                            "Min Others",
+                            min_value=0,
+                            value=sum_assured_ranges["Others"][0],
+                            key=lifecycle_key(
+                                lifecycle_key_prefix, f"min_oth_{epic_key}_rider"
+                            ),
+                            label_visibility="collapsed",
+                        )
+                    with row_oth[3]:
+                        max_oth = st.number_input(
+                            "Max Others",
+                            min_value=min_oth,
+                            value=sum_assured_ranges["Others"][1],
+                            key=lifecycle_key(
+                                lifecycle_key_prefix, f"max_oth_{epic_key}_rider"
+                            ),
+                            label_visibility="collapsed",
+                        )
 
                     if is_selected:
                         selected_epics_rider.append(epic_key)
-                        epic_counts_rider[epic_key] = {
-                            "positive": pos_count,
-                            "negative": neg_count,
-                            "payment_frequency_options": mapped_frequencies,
-                        }
-
-                elif epic_key == "SumAssuredValidation":
-                    is_selected = st.checkbox(
-                        epic_desc,
-                        value=select_all_rider,
-                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"),
-                    )
-                    with st.expander("Show/Hide PPT Configuration", expanded=False):
-                        header = st.columns([0.5, 2, 1, 1, 1, 1])
-                        with header[1]:
-                            st.markdown("**PPT Type**")
-                        with header[2]:
-                            st.markdown("**Min**")
-                        with header[3]:
-                            st.markdown("**Max**")
-                        with header[4]:
-                            st.markdown("**Pos**")
-                        with header[5]:
-                            st.markdown("**Neg**")
-
-                        row_sp = st.columns([0.5, 2, 1, 1, 1, 1])
-                        with row_sp[0]:
-                            sp = st.checkbox(
-                                "Enable",
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"sa_enabled_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[1]:
-                            st.markdown("SinglePay")
-                        with row_sp[2]:
-                            min_sp = st.number_input(
-                                "Min SinglePay",
-                                min_value=0,
-                                value=sum_assured_ranges["Single Pay"][0],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"min_sp_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[3]:
-                            max_sp = st.number_input(
-                                "Max SinglePay",
-                                min_value=min_sp,
-                                value=sum_assured_ranges["Single Pay"][1],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"max_sp_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[4]:
-                            pos_sp = st.number_input(
-                                "Pos SinglePay",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"pos_sp_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[5]:
-                            neg_sp = st.number_input(
-                                "Neg SinglePay",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"neg_sp_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-
-                        row_oth = st.columns([0.5, 2, 1, 1, 1, 1])
-                        with row_oth[0]:
-                            oth = st.checkbox(
-                                "Enable",
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"oth_enabled_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[1]:
-                            st.markdown("Others")
-                        with row_oth[2]:
-                            min_oth = st.number_input(
-                                "Min Others",
-                                min_value=0,
-                                value=sum_assured_ranges["Others"][0],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"min_oth_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[3]:
-                            max_oth = st.number_input(
-                                "Max Others",
-                                min_value=min_oth,
-                                value=sum_assured_ranges["Others"][1],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"max_oth_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[4]:
-                            pos_oth = st.number_input(
-                                "Pos Others",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"pos_oth_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[5]:
-                            neg_oth = st.number_input(
-                                "Neg Others",
-                                min_value=0,
-                                value=5,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"neg_oth_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-
-                        if is_selected:
-                            selected_epics_rider.append(epic_key)
-                            if epic_key not in epic_counts_rider:
-                                epic_counts_rider[epic_key] = {}
-                            if sp:
-                                epic_counts_rider[epic_key]["Single Pay"] = {
-                                    "min_val": min_sp,
-                                    "max_val": max_sp,
-                                    "positive": pos_sp,
-                                    "negative": neg_sp,
-                                }
-                            if oth:
-                                epic_counts_rider[epic_key]["Others"] = {
-                                    "min_val": min_oth,
-                                    "max_val": max_oth,
-                                    "positive": pos_oth,
-                                    "negative": neg_oth,
-                                }
-
-                else:
-                    row = st.columns([2, 1.5, 1.5])
-                    with row[0]:
-                        is_selected = st.checkbox(
-                            epic_desc,
-                            value=select_all_rider,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
-                            ),
-                        )
-                    with row[1]:
-                        pos_count = st.number_input(
-                            f"Pos {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_pos_{epic_key}_rider"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Pos",
-                        )
-                    with row[2]:
-                        neg_count = st.number_input(
-                            f"Neg {epic_key}",
-                            min_value=0,
-                            value=5,
-                            key=lifecycle_key(
-                                lifecycle_key_prefix, f"epic_neg_{epic_key}_rider"
-                            ),
-                            label_visibility="collapsed",
-                            placeholder="Neg",
-                        )
-                    if is_selected:
-                        selected_epics_rider.append(epic_key)
-                        epic_counts_rider[epic_key] = {
-                            "positive": pos_count,
-                            "negative": neg_count,
-                        }
-
-            else:  # Apply Same Count to All Epics
-                if epic_key in [
-                    "EntryAge",
-                    "PremiumPayingTerm",
-                    "PolicyTerm",
-                    "MaturityAge",
-                ]:
-                    is_selected = st.checkbox(
-                        epic_desc,
-                        value=select_all_rider,
-                        key=lifecycle_key(
-                            lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
-                        ),
-                    )
-                    with st.expander("Show/Hide PPT Configuration", expanded=False):
-                        ppt_age_ranges, ppt_enabled = {}, {}
-
-                        for ppt in ppt_names:
-                            row = st.columns([0.5, 2, 2])
-                            with row[0]:
-                                enabled = st.checkbox(
-                                    "Enable",
-                                    value=is_selected,
-                                    key=lifecycle_key(
-                                        lifecycle_key_prefix,
-                                        f"ppt_enabled_all_{epic_key}_{ppt}_rider",
-                                    ),
-                                    label_visibility="collapsed",
-                                )
-                            with row[1]:
-                                st.markdown(ppt)
-                            with row[2]:
-                                if epic_key == "EntryAge":
-                                    min_age, max_age = st.slider(
-                                        "Entry Age",
-                                        0,
-                                        85,
-                                        entry_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "PolicyTerm":
-                                    min_age, max_age = st.slider(
-                                        "Policy Term",
-                                        5,
-                                        80,
-                                        policy_term_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                elif epic_key == "MaturityAge":
-                                    min_age, max_age = st.slider(
-                                        "Maturity Age",
-                                        1,
-                                        90,
-                                        maturity_age_ppt_ranges[ppt],
-                                        key=lifecycle_key(
-                                            lifecycle_key_prefix,
-                                            f"maturity_age_slider_{epic_key}_{ppt}_rider",
-                                        ),
-                                        label_visibility="collapsed",
-                                    )
-                                else:
-                                    if (
-                                        premium_paying_ppt_ranges[ppt][0]
-                                        == premium_paying_ppt_ranges[ppt][1]
-                                    ):
-                                        min_age = max_age = st.slider(
-                                            "Entry Age",
-                                            0,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt][0],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                                    else:
-                                        min_age, max_age = st.slider(
-                                            "Entry Age",
-                                            0,
-                                            85,
-                                            premium_paying_ppt_ranges[ppt],
-                                            key=lifecycle_key(
-                                                lifecycle_key_prefix,
-                                                f"entry_age_slider_{epic_key}_{ppt}_rider",
-                                            ),
-                                            label_visibility="collapsed",
-                                        )
-                            if enabled:
-                                ppt_age_ranges[ppt] = (min_age, max_age)
-                                ppt_enabled[ppt] = True
-                            else:
-                                ppt_enabled[ppt] = False
-
-                        if is_selected and any(ppt_enabled.values()):
-                            selected_epics_rider.append(epic_key)
-                            epic_counts_rider[epic_key] = {
-                                "ppt_age_ranges": ppt_age_ranges,
-                                "ppt_enabled": ppt_enabled,
+                        if epic_key not in epic_counts_rider:
+                            epic_counts_rider[epic_key] = {}
+                        if sp:
+                            epic_counts_rider[epic_key]["Single Pay"] = {
+                                "min_val": min_sp,
+                                "max_val": max_sp,
+                                "positive": num_positive_global,
+                                "negative": num_negative_global,
+                            }
+                        if oth:
+                            epic_counts_rider[epic_key]["Others"] = {
+                                "min_val": min_oth,
+                                "max_val": max_oth,
                                 "positive": num_positive_global,
                                 "negative": num_negative_global,
                             }
 
-                elif epic_key == "PaymentFrequency":
-                    is_selected = st.checkbox(
-                        epic_desc,
-                        value=select_all_rider,
-                        key=lifecycle_key(
-                            lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
-                        ),
-                    )
-                    frequency_options = [
-                        "Annual",
-                        "Half-Yearly",
-                        "Quarterly",
-                        "Monthly",
-                        "Single Pay",
-                    ]
-                    frequency_map = {
-                        "Annual": 1,
-                        "Half-Yearly": 2,
-                        "Quarterly": 3,
-                        "Monthly": 4,
-                        "Single Pay": 5,
+            else:
+                is_selected = st.checkbox(
+                    epic_desc,
+                    value=select_all_rider,
+                    key=lifecycle_key(
+                        lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
+                    ),
+                )
+                if is_selected:
+                    selected_epics_rider.append(epic_key)
+                    epic_counts_rider[epic_key] = {
+                        "positive": num_positive_global,
+                        "negative": num_negative_global,
                     }
-                    freq_cols = st.columns(len(frequency_options) + 1)
-                    selected_frequencies = []
-                    for i, freq in enumerate(frequency_options):
-                        with freq_cols[i + 1]:
-                            if st.checkbox(
-                                freq,
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"freq_cb_{freq}_rider"
-                                ),
-                            ):
-                                selected_frequencies.append(freq)
-
-                    mapped_frequencies = [frequency_map[f] for f in selected_frequencies]
-
-                    if is_selected:
-                        selected_epics_rider.append(epic_key)
-                        epic_counts_rider[epic_key] = {
-                            "positive": num_positive_global,
-                            "negative": num_negative_global,
-                            "payment_frequency_options": mapped_frequencies,
-                        }
-
-                elif epic_key == "SumAssuredValidation":
-                    is_selected = st.checkbox(
-                        epic_desc,
-                        value=select_all_rider,
-                        key=lifecycle_key(lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"),
-                    )
-                    with st.expander("Show/Hide PPT Configuration", expanded=False):
-                        header = st.columns([0.5, 2, 1, 1])
-                        with header[1]:
-                            st.markdown("**PPT Type**")
-                        with header[2]:
-                            st.markdown("**Min**")
-                        with header[3]:
-                            st.markdown("**Max**")
-
-                        row_sp = st.columns([0.5, 2, 1, 1])
-                        with row_sp[0]:
-                            sp = st.checkbox(
-                                "Enable",
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"sa_enabled_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[1]:
-                            st.markdown("SinglePay")
-                        with row_sp[2]:
-                            min_sp = st.number_input(
-                                "Min SinglePay",
-                                min_value=0,
-                                value=sum_assured_ranges["Single Pay"][0],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"min_sp_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_sp[3]:
-                            max_sp = st.number_input(
-                                "Max SinglePay",
-                                min_value=min_sp,
-                                value=sum_assured_ranges["Single Pay"][1],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"max_sp_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-
-                        row_oth = st.columns([0.5, 2, 1, 1])
-                        with row_oth[0]:
-                            oth = st.checkbox(
-                                "Enable",
-                                value=is_selected,
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"oth_enabled_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[1]:
-                            st.markdown("Others")
-                        with row_oth[2]:
-                            min_oth = st.number_input(
-                                "Min Others",
-                                min_value=0,
-                                value=sum_assured_ranges["Others"][0],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"min_oth_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-                        with row_oth[3]:
-                            max_oth = st.number_input(
-                                "Max Others",
-                                min_value=min_oth,
-                                value=sum_assured_ranges["Others"][1],
-                                key=lifecycle_key(
-                                    lifecycle_key_prefix, f"max_oth_{epic_key}_rider"
-                                ),
-                                label_visibility="collapsed",
-                            )
-
-                        if is_selected:
-                            selected_epics_rider.append(epic_key)
-                            if epic_key not in epic_counts_rider:
-                                epic_counts_rider[epic_key] = {}
-                            if sp:
-                                epic_counts_rider[epic_key]["Single Pay"] = {
-                                    "min_val": min_sp,
-                                    "max_val": max_sp,
-                                    "positive": num_positive_global,
-                                    "negative": num_negative_global,
-                                }
-                            if oth:
-                                epic_counts_rider[epic_key]["Others"] = {
-                                    "min_val": min_oth,
-                                    "max_val": max_oth,
-                                    "positive": num_positive_global,
-                                    "negative": num_negative_global,
-                                }
-
-                else:
-                    is_selected = st.checkbox(
-                        epic_desc,
-                        value=select_all_rider,
-                        key=lifecycle_key(
-                            lifecycle_key_prefix, f"epic_cb_{epic_key}_rider"
-                        ),
-                    )
-                    if is_selected:
-                        selected_epics_rider.append(epic_key)
-                        epic_counts_rider[epic_key] = {
-                            "positive": num_positive_global,
-                            "negative": num_negative_global,
-                        }
 
     return selected_epics_rider, epic_counts_rider
 
@@ -3783,9 +2638,7 @@ def render_plan_ui(plan_type, display_name_default=None):
                     f"No saved configurations found for '{selected_plan_for_configs}'"
                 )
 
-        selected_lifecycle_for_module = st.session_state.get(
-            "lifecycle_to_generate", "pre issuance"
-        )
+        selected_lifecycle_for_module = get_selected_lifecycle()
         selected_module_for_plan = resolve_plan_lifecycle_module(
             plan_type, selected_lifecycle_for_module
         )
@@ -3835,27 +2688,15 @@ def render_plan_ui(plan_type, display_name_default=None):
 
         st.header("Configure Case Counts")
 
-        count_mode = st.radio(
-            "Select Count Mode:",
-            options=[
-                "Apply Same Count to All Epics",
-                "Set Individual Counts for Each Epic",
-            ] if plan_type != "saving plan" else ["Apply Same Count to All Epics"],
-            index=0,
-            key="count_mode_selector",
-        )
-
-        num_positive_global, num_negative_global = 5, 5
-        if count_mode == "Apply Same Count to All Epics":
-            col1, col2 = st.columns(2)
-            with col1:
-                num_positive_global = st.number_input(
-                    "Positive Cases", min_value=0, value=5
-                )
-            with col2:
-                num_negative_global = st.number_input(
-                    "Negative Cases", min_value=0, value=5
-                )
+        col1, col2 = st.columns(2)
+        with col1:
+            num_positive_global = st.number_input(
+                "Positive Cases", min_value=0, value=5
+            )
+        with col2:
+            num_negative_global = st.number_input(
+                "Negative Cases", min_value=0, value=5
+            )
 
     # --- Epic and Case Count Selection on Main Canvas ---
     lifecycle_options = LIFECYCLE_OPTIONS
@@ -3923,7 +2764,6 @@ def render_plan_ui(plan_type, display_name_default=None):
                             selected_header, selected_epics, epic_counts = (
                                 render_saving_plan_death_claim_epics(
                                     lifecycle_prefix,
-                                    count_mode,
                                     num_positive_global,
                                 )
                             )
@@ -3932,7 +2772,6 @@ def render_plan_ui(plan_type, display_name_default=None):
                                 render_post_issuance_epics(
                                     plan_type,
                                     lifecycle_prefix,
-                                    count_mode,
                                     num_positive_global,
                                     shared_lifecycle_prefix=lifecycle_prefix,
                                 )
@@ -3943,7 +2782,6 @@ def render_plan_ui(plan_type, display_name_default=None):
                                 render_post_issuance_epics(
                                     plan_type,
                                     f"{lifecycle_prefix}_rider",
-                                    count_mode,
                                     num_positive_global,
                                     shared_lifecycle_prefix=lifecycle_prefix,
                                 )
@@ -3956,7 +2794,6 @@ def render_plan_ui(plan_type, display_name_default=None):
                         selected_epics, epic_counts = render_base_plan_epics(
                             logic_module,
                             lifecycle_prefix,
-                            count_mode,
                             num_positive_global,
                             num_negative_global,
                         )
@@ -3965,7 +2802,6 @@ def render_plan_ui(plan_type, display_name_default=None):
                             selected_epics_rider, epic_counts_rider = render_rider_epics(
                                 logic_module,
                                 lifecycle_prefix,
-                                count_mode,
                                 num_positive_global,
                                 num_negative_global,
                             )
@@ -3987,16 +2823,22 @@ def render_plan_ui(plan_type, display_name_default=None):
 
     # --- Sidebar buttons for actions ---
     with st.sidebar:
+        # Once results are on screen the generate controls are obsolete: the user
+        # clears the results to configure and generate a new run.
+        show_generate_controls = st.session_state.generated_df is None
+
         st.header("Generate")
+        # The radio stays rendered (disabled) while results are on screen: hiding
+        # it would make Streamlit drop "lifecycle_to_generate", which the code
+        # below still reads.
         st.radio(
             "Lifecycle Stage",
             options=lifecycle_options,
             key="lifecycle_to_generate",
+            disabled=not show_generate_controls,
         )
         if plan_type == "ulip plan":
-            selected_lifecycle = st.session_state.get(
-                "lifecycle_to_generate", "pre issuance"
-            )
+            selected_lifecycle = get_selected_lifecycle()
             lifecycle_prefix = LIFECYCLE_PREFIX_MAP.get(
                 selected_lifecycle, "pre_issuance"
             )
@@ -4005,27 +2847,50 @@ def render_plan_ui(plan_type, display_name_default=None):
                 "Portfolio Type",
                 options=["LIFESTYLE", "SELFMANAGED"],
                 key=portfolio_key,
+                disabled=not show_generate_controls,
             )
 
         # Ultima Care carries the same EMR/PerMille onloading fields as the saving plan.
         if plan_type == "saving plan" or (
-            plan_type == "ulip plan" and get_selected_ulip_variant() == "Ultima Care"
+            plan_type == "ulip plan"
+            and get_selected_ulip_variant() == "Ultima Care"
         ):
             st.checkbox(
                 "Generate without loading testbeds",
                 value=False,
                 key="generate_without_loading_testbeds",
+                disabled=not show_generate_controls,
             )
 
-        if st.button(
+        # Green styling, scoped to this button only so the red Logout button
+        # (also type="primary") keeps its own colour.
+        if show_generate_controls:
+            st.markdown(
+                """
+            <style>
+            div.st-key-generate_test_cases_btn button {
+                background-color: #21a366;
+                border-color: #21a366;
+                color: #ffffff;
+            }
+            div.st-key-generate_test_cases_btn button:hover:not(:disabled),
+            div.st-key-generate_test_cases_btn button:focus:not(:disabled) {
+                background-color: #1a8452;
+                border-color: #1a8452;
+                color: #ffffff;
+            }
+            </style>
+            """,
+                unsafe_allow_html=True,
+            )
+        if show_generate_controls and st.button(
             "\U0001F680 Generate Test Cases",
+            key="generate_test_cases_btn",
             type="primary",
             disabled=st.session_state.processing,
             use_container_width=True,
         ):
-            selected_lifecycle = st.session_state.get(
-                "lifecycle_to_generate", "pre issuance"
-            )
+            selected_lifecycle = get_selected_lifecycle()
             selected_phase_config = phase_configs.get(selected_lifecycle, {})
             selected_epics = selected_phase_config.get("selected_epics", [])
             selected_epics_rider = selected_phase_config.get(

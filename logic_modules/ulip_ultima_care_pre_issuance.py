@@ -58,7 +58,7 @@ PORTFOLIO_STRATEGY_MAP = {
     "LIFESTYLE": "Lifestyle Based Portfolio Strategy",
     "SELFMANAGED": "Self Managed Portfolio Strategy",
 }
-RISK_CLASS_DEFAULT = "Standard"
+RISK_CLASS_DEFAULT = 0
 TOTAL_FUND_ALLOCATED_DEFAULT = 100
 FUND_STEP = 5
 CURRENT_PORTFOLIO_TYPE = "LIFESTYLE"
@@ -108,9 +108,9 @@ EPIC_MAP = {
     'PaymentFrequency': 'Premium payment frequencies',
     'FundAllocation': 'Fund Percentage',
     'PremiumValidation': 'Check for Premium Validation',
-    'ITermCareSumAssured': 'Check for iTerm Care Sum Assured',
-    'ComboSumAssured': 'Check for combo Sum Assured validation',
-    'TotalSumAssured': 'Check for Total Sum Assured validation',
+    'ITermCareSumAssured': 'Check iTerm Care Sum Assured is within 3 lakh - 35 lakh',
+    'ComboSumAssured': "Check combo iTerm Care Sum Assured is <= Ultima Plus (base) Sum Assured",
+    'TotalSumAssured': 'Check Total Sum Assured (Ultima Plus + iTerm Care) is <= 30x Annualized Premium',
 }
 
 EPIC_MAP_RIDER = {}
@@ -609,9 +609,20 @@ def get_out_of_range_maturity_year(ppt_name, age, PPT_RULES=PPT_RULES, sum_assur
 
 
 def build_case_age(min_age, max_age, iteration_index):
-    if iteration_index % 2 == 0:
-        return max(min_age, min(max_age - iteration_index, max_age))
-    return min(max_age, min_age + iteration_index)
+    """Positive ages, boundary values first.
+
+    Index 0 and 1 are the exact minimum and maximum (the edge cases), 2 and 3 are
+    one step inside each boundary, and later indexes walk inward from there.
+    """
+    min_age = int(min_age)
+    max_age = int(max_age)
+    edges = [min_age, max_age, min(min_age + 1, max_age), max(max_age - 1, min_age)]
+    if iteration_index < len(edges):
+        return edges[iteration_index]
+    offset = iteration_index - len(edges)
+    if offset % 2 == 0:
+        return max(min_age, min(max_age - (offset // 2) - 2, max_age))
+    return min(max_age, min_age + (offset // 2) + 2)
 
 
 def build_random_age(min_age, max_age):
@@ -623,10 +634,59 @@ def build_random_age(min_age, max_age):
 
 
 def build_entry_age_negative(min_age, max_age, iteration_index, ppt_name):
-    """Below minimum on even iterations, above maximum on odd ones."""
+    """Invalid ages, just-outside boundaries first.
+
+    Index 0 and 1 are one year below the minimum and one above the maximum (the
+    edge cases); later indexes move further outside the valid range.
+    """
+    min_age = int(min_age)
+    max_age = int(max_age)
+    edges = [max(0, min_age - 1), max_age + 1, max(0, min_age - 2), max_age + 2]
+    if iteration_index < len(edges):
+        return edges[iteration_index]
+    offset = (iteration_index - len(edges)) // 2 + 3
     if iteration_index % 2 == 0:
-        return max(0, int(min_age) - 1)
-    return int(max_age) + 1
+        return max(0, min_age - offset)
+    return max_age + offset
+
+
+def build_case_sum_assured(min_sum, max_sum, iteration_index):
+    """Valid sum assured values, boundary values first.
+
+    Index 0 and 1 are the exact minimum and maximum (the edge cases), 2 and 3 sit
+    one step inside each boundary, and later indexes are random within the band.
+    """
+    min_sum = ensure_thousand_multiple(min_sum)
+    max_sum = ensure_thousand_multiple(max_sum)
+    if max_sum <= min_sum:
+        return min_sum
+    edges = [
+        min_sum,
+        max_sum,
+        min(min_sum + 1000, max_sum),
+        max(max_sum - 1000, min_sum),
+    ]
+    if iteration_index < len(edges):
+        return edges[iteration_index]
+    return pick_sum_assured_value(min_sum, max_sum)
+
+
+def build_out_of_band_sum_assured(min_sum, max_sum, iteration_index):
+    """Invalid sum assured values, just-outside boundaries first."""
+    min_sum = ensure_thousand_multiple(min_sum)
+    max_sum = ensure_thousand_multiple(max_sum)
+    edges = [
+        max(0, min_sum - 1000),
+        max_sum + 1000,
+        max(0, min_sum - 2000),
+        max_sum + 2000,
+    ]
+    if iteration_index < len(edges):
+        return edges[iteration_index]
+    step = ((iteration_index - len(edges)) // 2 + 3) * 1000
+    if iteration_index % 2 == 0:
+        return max(0, min_sum - step)
+    return max_sum + step
 
 
 def resolve_annualized_premium(discount_info, sum_assured_multiple):
@@ -1624,7 +1684,7 @@ def generate_test_cases(
                 discount_info,
                 idx,
                 sum_assured_multiple=sum_assured_multiple,
-                iterm_care_sum_assured=pick_sum_assured_value(min_sum, max_sum),
+                iterm_care_sum_assured=build_case_sum_assured(min_sum, max_sum, i),
             )
             append_scenario(common_row)
 
@@ -1640,12 +1700,8 @@ def generate_test_cases(
                 ppt_name, age, sum_assured_multiple=sum_assured_multiple
             )
             discount_info = calculate_discounts(ppt_name)
-            # Just below min on even iterations, just above max on odd ones.
-            neg_iterm_sa = (
-                ensure_thousand_multiple(min_sum - 1000)
-                if i % 2 == 0
-                else ensure_thousand_multiple(max_sum + 1000)
-            )
+            # Just outside each boundary first, then further outside the band.
+            neg_iterm_sa = build_out_of_band_sum_assured(min_sum, max_sum, i)
             common_row = build_common_row(
                 tuid_counter,
                 MODULE_NAME,
@@ -1699,9 +1755,10 @@ def generate_test_cases(
             ultima_plus_sa = resolve_annualized_premium(
                 discount_info, sum_assured_multiple
             ) * sum_assured_multiple
-            # iTerm Care SA at or below the Ultima Plus SA.
-            iterm_sa = pick_sum_assured_value(
-                ITERM_CARE_SA_RANGE[0], min(ITERM_CARE_SA_RANGE[1], ultima_plus_sa)
+            # iTerm Care SA at or below the Ultima Plus SA. The boundary case is
+            # exactly equal to it, capped by the iTerm Care band.
+            iterm_sa = build_case_sum_assured(
+                ITERM_CARE_SA_RANGE[0], min(ITERM_CARE_SA_RANGE[1], ultima_plus_sa), i
             )
             common_row = build_common_row(
                 tuid_counter,
@@ -1806,9 +1863,11 @@ def generate_test_cases(
             )
             ultima_plus_sa = annualized_premium * sum_assured_multiple
             headroom = max(0, (multiple_cap * annualized_premium) - ultima_plus_sa)
-            iterm_sa = pick_sum_assured_value(
+            # The boundary case puts the total exactly on the 30x premium cap.
+            iterm_sa = build_case_sum_assured(
                 ITERM_CARE_SA_RANGE[0],
-                min(ITERM_CARE_SA_RANGE[1], ultima_plus_sa, headroom)
+                min(ITERM_CARE_SA_RANGE[1], ultima_plus_sa, headroom),
+                i,
             )
             common_row = build_common_row(
                 tuid_counter,

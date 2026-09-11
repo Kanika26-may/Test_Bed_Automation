@@ -11,47 +11,19 @@ from ulip_plan_ui import render_ulip_plan_ui
 def main ():
     configure_app_shell()
 
-    # Logout button at top right
-    st.markdown(
-        """
-        <style>
-        .logout-btn-container {
-            position: fixed;
-            top: 0.6rem;
-            right: 1rem;
-            z-index: 999999;
-        }
-        .logout-btn-container button {
-            background-color: #e74c3c;
-            color: white;
-            border: none;
-            padding: 0.3rem 0.8rem;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            font-weight: 600;
-        }
-        .logout-btn-container button:hover {
-            background-color: #c0392b;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.container():
-        _, col_logout = st.columns([9, 1])
-        with col_logout:
-            if st.button("Logout", key="logout_btn", type="primary"):
-                st.session_state["logged_in"] = False
-                st.rerun()
-
     if "app_selected_plan_type" not in st.session_state:
         st.session_state["app_selected_plan_type"] = "term plan"
     if "app_last_plan_type" not in st.session_state:
         st.session_state["app_last_plan_type"] = st.session_state["app_selected_plan_type"]
 
     with st.sidebar:
+        # Logout sits at the very top of the sidebar.
+        if st.button(
+            "Logout", key="logout_btn", type="primary", use_container_width=True
+        ):
+            st.session_state["logged_in"] = False
+            st.rerun()
+
         st.header("Plan Selection")
         selected_plan_type = st.selectbox(
             "Plan Type",
@@ -86,7 +58,6 @@ def main ():
             "post_issuance_selected_header",
             "product_display_name_input",
             "product_code_input",
-            "count_mode_selector",
             "lifecycle_to_generate",
         ]
         for key in reset_keys:
