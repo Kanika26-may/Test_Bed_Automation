@@ -101,13 +101,13 @@ PPT_NAME = [
 ]
 
 EPIC_MAP = {
-    'EntryAge': 'Check Min Entry Age',
-    'MaturityAge': 'Check Max Maturity Age is 75 Years',
-    'PolicyTerm': 'Allowed PT values',
+    'EntryAge': 'Check for Minimum - Maximum Entry Age',
+    'MaturityAge': 'Check for Minimum - Maximum Maturity Age',
+    'PolicyTerm': 'Check for Policy Term',
     'PremiumPayingTerm': 'Check for Premium Paying Term',
-    'PaymentFrequency': 'Premium payment frequencies',
-    'FundAllocation': 'Fund Percentage',
-    'PremiumValidation': 'Check for Premium Validation',
+    'PaymentFrequency': 'Check for Premium payment frequencies',
+    'FundAllocation': 'Check for Fund Percentage (Self Managed)',
+    'PremiumValidation': 'Check for Annual Premium Validation',
     'ITermCareSumAssured': 'Check iTerm Care Sum Assured is within 3 lakh - 35 lakh',
     'ComboSumAssured': "Check combo iTerm Care Sum Assured is <= Ultima Plus (base) Sum Assured",
     'TotalSumAssured': 'Check Total Sum Assured (Ultima Plus + iTerm Care) is <= 30x Annualized Premium',
@@ -161,18 +161,40 @@ def premium_paying_term_message(ppt, min_ppt=None, max_ppt=None, ppt_limit=None)
         return f"Premium Paying Term chosen should be between {min_ppt} and {max_ppt} years for {ppt}."
 
 
-def policy_term_message(sam_band):
-    rule = SAM_BAND_RULES[sam_band]
-    allowed = ",".join(str(term) for term in rule["allowed_policy_terms"])
+def sam_bands_for_ppt(ppt_name):
+    """SAM bands whose minimum PPT the given premium paying term satisfies."""
+    charge_year = PPT_RULES[ppt_name]['charge_year'](MIN_ENTRY_AGE)
+    bands = [
+        band
+        for band, rule in SAM_BAND_RULES.items()
+        if charge_year >= rule["min_ppt"]
+    ]
+    return bands or [next(iter(SAM_BAND_RULES))]
+
+
+def policy_term_message(ppt_name):
+    """Policy term rule stated for a PPT, covering every SAM band it can use."""
+    bands = sam_bands_for_ppt(ppt_name)
+    min_term = min(SAM_BAND_RULES[b]["min_policy_term"] for b in bands)
+    allowed = sorted(
+        {t for b in bands for t in SAM_BAND_RULES[b]["allowed_policy_terms"]}
+    )
+    band_text = " / ".join(bands)
     return (
-        f"Minimum Policy term should be {rule['min_policy_term']} for {sam_band}. "
-        f"Allowed PT values: {allowed}"
+        f"Minimum Policy term should be {min_term} for {ppt_name} ({band_text}). "
+        f"Allowed PT values: {','.join(str(t) for t in allowed)}"
     )
 
 
-def min_ppt_message(sam_band):
-    rule = SAM_BAND_RULES[sam_band]
-    return f"Minimum PPT should be {rule['min_ppt']} for {sam_band}"
+def min_ppt_message(ppt_name):
+    """Premium paying term rule stated for a specific PPT."""
+    charge_year = PPT_RULES[ppt_name]['charge_year'](MIN_ENTRY_AGE)
+    bands = sam_bands_for_ppt(ppt_name)
+    band_text = " / ".join(bands)
+    return (
+        f"Premium Paying Term should be {charge_year} years for {ppt_name}, "
+        f"valid for {band_text}"
+    )
 
 
 def iterm_care_sum_assured_message(min_sum=None, max_sum=None):
@@ -374,15 +396,24 @@ def build_person_context(age, gender, reference_date=None):
     }
 
 
-def build_fund_allocation(portfolio_type):
+def build_fund_allocation(portfolio_type, total=None):
+    """Spread `total` across the fund columns for the given portfolio type.
+
+    Lifestyle puts everything in one fund; self-managed splits the total across
+    several funds, which is what the user is choosing when they self-manage.
+    """
     portfolio_type = normalize_portfolio_type(portfolio_type)
+    if total is None:
+        total = TOTAL_FUND_ALLOCATED_DEFAULT
     allocation = {fund: 0 for fund in FUND_COLUMNS}
     if portfolio_type == "LIFESTYLE":
-        allocation["BlueChipFundPercentage"] = TOTAL_FUND_ALLOCATED_DEFAULT
+        allocation["BlueChipFundPercentage"] = total
         return allocation
-    selected_count = random.randint(1, len(FUND_COLUMNS))
+    # Self-managed means a real spread, so always use at least two funds.
+    max_funds = min(len(FUND_COLUMNS), max(2, total // FUND_STEP))
+    selected_count = random.randint(2, max_funds)
     selected_funds = random.sample(FUND_COLUMNS, selected_count)
-    remaining = TOTAL_FUND_ALLOCATED_DEFAULT
+    remaining = total
     for index, fund in enumerate(selected_funds):
         if index == len(selected_funds) - 1:
             allocation[fund] = remaining
@@ -430,16 +461,6 @@ CURRENT_SUM_ASSURED_MULTIPLE = None
 
 def pick_sum_assured_multiple():
     return random.randint(SUM_ASSURED_MULTIPLE_RANGE[0], SUM_ASSURED_MULTIPLE_RANGE[1])
-
-
-def ppt_names_for_sam_band(sam_band):
-    """PPTs whose premium paying term satisfies the band's minimum PPT."""
-    min_ppt = SAM_BAND_RULES[sam_band]["min_ppt"]
-    valid = [
-        ppt for ppt in PPT_NAME
-        if PPT_RULES[ppt]['charge_year'](MIN_ENTRY_AGE) >= min_ppt
-    ]
-    return valid or list(PPT_NAME)
 
 
 def pick_sum_assured_multiple_for_ppt(ppt_name):
@@ -585,44 +606,124 @@ def get_years(ppt_name, age, PPT_RULES=PPT_RULES, sum_assured_multiple=None):
     return charge_year, coverage_year, maturity_year
 
 
-def get_out_of_range_coverage(ppt_name, age, PPT_RULES=PPT_RULES, sum_assured_multiple=None):
-    """Return a policy term below the SAM band's minimum (negative case)."""
+def get_out_of_range_coverage(
+    ppt_name,
+    age,
+    PPT_RULES=PPT_RULES,
+    sum_assured_multiple=None,
+    iteration_index=0,
+):
+    """Return a policy term outside the allowed range (negative case).
+
+    Even iterations fall below the SAM band's minimum term, odd iterations rise
+    above the maximum policy term, each pair stepping one year further out. For
+    SAM 10-14 that yields terms in the 5-9 and 31-35 regions.
+    """
     age = normalize_age_value(age)
     rule = PPT_RULES.get(ppt_name)
     charge_year = rule.get('charge_year_override', rule['charge_year'](age))
     if sum_assured_multiple is None:
         sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
     min_term = policy_term_min_for_multiple(sum_assured_multiple)
-    coverage_year = max(1, min_term - 1)
+    step = iteration_index // 2
+    if iteration_index % 2 == 0:
+        coverage_year = max(1, min_term - 1 - step)
+    else:
+        coverage_year = MAX_POLICY_TERM + 1 + step
     maturity_year = rule['maturity_year'](age, coverage_year)
     return charge_year, coverage_year, maturity_year
 
 
-def get_out_of_range_maturity_year(ppt_name, age, PPT_RULES=PPT_RULES, sum_assured_multiple=None):
-    """Return a policy term that pushes maturity age beyond the allowed maximum."""
+def get_maturity_boundary_years(
+    ppt_name, age, sum_assured_multiple=None, iteration_index=0
+):
+    """Valid policy term chosen to exercise the maturity age boundaries.
+
+    Even iterations aim at the lowest reachable maturity age, odd iterations at
+    the highest, each pair stepping one allowed policy term further inward, so
+    both the minimum and maximum maturity boundaries are covered.
+    """
     age = normalize_age_value(age)
     rule = PPT_RULES.get(ppt_name)
     charge_year = rule.get('charge_year_override', rule['charge_year'](age))
-    coverage_year = int(MAX_MATURITY_AGE - age) + 1
+    if sum_assured_multiple is None:
+        sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
+    min_maturity_age, max_maturity_age = rule['maturity_age_range']
+    # Allowed terms that keep both the PPT and the maturity window satisfied.
+    terms = sorted(
+        term
+        for term in allowed_policy_terms(sum_assured_multiple, age)
+        if term >= charge_year
+        and min_maturity_age <= age + term <= max_maturity_age
+    )
+    if not terms:
+        return get_years(ppt_name, age, sum_assured_multiple=sum_assured_multiple)
+    step = iteration_index // 2
+    if iteration_index % 2 == 0:
+        coverage_year = terms[min(step, len(terms) - 1)]
+    else:
+        coverage_year = terms[max(0, len(terms) - 1 - step)]
+    return charge_year, coverage_year, rule['maturity_year'](age, coverage_year)
+
+
+def get_out_of_range_maturity_year(
+    ppt_name,
+    age,
+    PPT_RULES=PPT_RULES,
+    sum_assured_multiple=None,
+    iteration_index=0,
+):
+    """Return a policy term whose maturity age falls outside the allowed range.
+
+    Even iterations push the maturity age above the maximum, odd iterations pull
+    it below the minimum, so both boundaries are covered. Each pair steps one
+    year further outside the range.
+    """
+    age = normalize_age_value(age)
+    rule = PPT_RULES.get(ppt_name)
+    step = iteration_index // 2
+    if iteration_index % 2 == 0:
+        coverage_year = int(MAX_MATURITY_AGE - age) + 1 + step
+    else:
+        # Below the minimum maturity age. That is only reachable when the entry
+        # age leaves room for a policy term of at least one year, so pull the
+        # age down if the caller's age is already too high.
+        max_usable_age = MIN_MATURITY_AGE - 2 - step
+        if age > max_usable_age:
+            age = max(MIN_ENTRY_AGE, max_usable_age)
+        coverage_year = max(1, int(MIN_MATURITY_AGE - age) - 1 - step)
+    charge_year = rule.get('charge_year_override', rule['charge_year'](age))
     maturity_year = rule['maturity_year'](age, coverage_year)
-    return charge_year, coverage_year, maturity_year
+    # The age is returned because the below-minimum case may have lowered it.
+    return charge_year, coverage_year, maturity_year, age
 
 
 def build_case_age(min_age, max_age, iteration_index):
-    """Positive ages, boundary values first.
+    """Positive ages: boundary values first, then spread across the range.
 
-    Index 0 and 1 are the exact minimum and maximum (the edge cases), 2 and 3 are
-    one step inside each boundary, and later indexes walk inward from there.
+    Index 0 and 1 are the exact minimum and maximum, 2 and 3 are one step inside
+    each boundary (the edge cases). From index 4 the values are spread evenly
+    through the interior of the range so mid-range ages are covered too.
     """
     min_age = int(min_age)
     max_age = int(max_age)
+    if max_age <= min_age:
+        return min_age
     edges = [min_age, max_age, min(min_age + 1, max_age), max(max_age - 1, min_age)]
     if iteration_index < len(edges):
         return edges[iteration_index]
+    # Walk the interior in evenly spaced steps, wrapping as the count grows.
+    interior_min = min(min_age + 2, max_age)
+    interior_max = max(max_age - 2, min_age)
+    span = interior_max - interior_min
+    if span <= 0:
+        return interior_min
     offset = iteration_index - len(edges)
-    if offset % 2 == 0:
-        return max(min_age, min(max_age - (offset // 2) - 2, max_age))
-    return min(max_age, min_age + (offset // 2) + 2)
+    steps = span + 1
+    # Golden-ratio style stride keeps successive values spread out rather than
+    # marching in from one end.
+    stride = max(1, round(steps * 0.382)) or 1
+    return interior_min + ((offset * stride) % steps)
 
 
 def build_random_age(min_age, max_age):
@@ -712,35 +813,6 @@ def build_iterm_care_sum_assured(base_sum_assured, annualized_premium):
     if upper < min_sa:
         return min_sa
     return pick_sum_assured_value(min_sa, upper)
-
-
-def resolve_sam_band_counts(epic_config, sam_band):
-    """Counts for a SAM band.
-
-    Supports the SAM-band shape ({'SAM 10-14': {'positive': n, 'negative': n}})
-    and the shared UI's per-PPT shape, where the band inherits the epic-level
-    counts and each band is generated once per enabled PPT.
-    """
-    band_config = epic_config.get(sam_band)
-    if isinstance(band_config, dict) and (
-        'positive' in band_config or 'negative' in band_config
-    ):
-        return int(band_config.get('positive', 0)), int(band_config.get('negative', 0))
-
-    ppt_pos_counts = epic_config.get('ppt_pos_counts', {})
-    ppt_neg_counts = epic_config.get('ppt_neg_counts', {})
-    ppt_enabled = epic_config.get('ppt_enabled', {})
-    per_ppt_mode = any(
-        int(ppt_pos_counts.get(ppt, 0)) > 0 or int(ppt_neg_counts.get(ppt, 0)) > 0
-        for ppt in PPT_NAME
-    )
-    if per_ppt_mode:
-        pos = sum(int(ppt_pos_counts.get(ppt, 0)) for ppt in PPT_NAME if ppt_enabled.get(ppt, True))
-        neg = sum(int(ppt_neg_counts.get(ppt, 0)) for ppt in PPT_NAME if ppt_enabled.get(ppt, True))
-        return pos, neg
-    if ppt_enabled and not any(ppt_enabled.values()):
-        return 0, 0
-    return int(epic_config.get('positive', 0)), int(epic_config.get('negative', 0))
 
 
 def resolve_ppt_case_counts(target_rule, epic_config, epic_count_source, ppt_name):
@@ -1077,8 +1149,11 @@ def generate_test_cases(
                 idx = random.randint(0, 2)
                 positive_age = build_case_age(min_entry_age, max_entry_age, i)
                 sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
-                charge_year, coverage_year, maturity_year = get_years(
-                    ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
+                charge_year, coverage_year, maturity_year = get_maturity_boundary_years(
+                    ppt_name,
+                    positive_age,
+                    sum_assured_multiple=sum_assured_multiple,
+                    iteration_index=i,
                 )
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1115,8 +1190,16 @@ def generate_test_cases(
                 idx = random.randint(0, 2)
                 positive_age = build_case_age(min_entry_age, max_entry_age, i)
                 sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
-                charge_year, coverage_year, maturity_year = get_out_of_range_maturity_year(
-                    ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
+                (
+                    charge_year,
+                    coverage_year,
+                    maturity_year,
+                    positive_age,
+                ) = get_out_of_range_maturity_year(
+                    ppt_name,
+                    positive_age,
+                    sum_assured_multiple=sum_assured_multiple,
+                    iteration_index=i,
                 )
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1149,26 +1232,26 @@ def generate_test_cases(
                 append_scenario(common_row)
 
     # --- EPIC: PolicyTerm ---
+    # Cases are generated per PPT (5/7/10/15/20 pay); the scenario states the
+    # policy term rule for that PPT's SAM band(s).
     # Min PT 10 for SAM 10-14 (allowed 10,15,20,25,30);
     # Min PT 15 for SAM 15-20 (allowed 15,20,25,30).
     if 'PolicyTerm' in selected_epics:
         target_rule = 'PolicyTerm'
         policy_term_config = epic_counts.get(target_rule, {})
 
-        for sam_band, band_rule in SAM_BAND_RULES.items():
-            pos_count, neg_count = resolve_sam_band_counts(policy_term_config, sam_band)
-            sam_low, sam_high = band_rule["sam_range"]
-
-            band_ppt_names = ppt_names_for_sam_band(sam_band)
+        for ppt_name in PPT_NAME:
+            pos_count, neg_count = resolve_ppt_case_counts(
+                target_rule, policy_term_config, epic_counts, ppt_name
+            )
 
             for i in range(pos_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                ppt_name = band_ppt_names[(idx + i) % len(band_ppt_names)]
                 rule = PPT_RULES.get(ppt_name)
                 min_entry_age, max_entry_age = rule['entry_age_range']
                 positive_age = build_case_age(min_entry_age, max_entry_age, i)
-                sum_assured_multiple = random.randint(sam_low, sam_high)
+                sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
                 charge_year, coverage_year, maturity_year = get_years(
                     ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
                 )
@@ -1180,7 +1263,7 @@ def generate_test_cases(
                     get_api_operation(target_rule),
                     CHECKING_NOTE_CREATE_VALUE,
                     ppt_name,
-                    SCENARIO_MAP[target_rule](sam_band),
+                    SCENARIO_MAP[target_rule](ppt_name),
                     'Positive',
                     EXPECTED_RESULT_MAP['Positive'],
                     INCEPTION_DATE_VALUE,
@@ -1205,13 +1288,15 @@ def generate_test_cases(
             for i in range(neg_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                ppt_name = band_ppt_names[(idx + i) % len(band_ppt_names)]
                 rule = PPT_RULES.get(ppt_name)
                 min_entry_age, max_entry_age = rule['entry_age_range']
                 positive_age = build_case_age(min_entry_age, max_entry_age, i)
-                sum_assured_multiple = random.randint(sam_low, sam_high)
+                sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
                 charge_year, coverage_year, maturity_year = get_out_of_range_coverage(
-                    ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
+                    ppt_name,
+                    positive_age,
+                    sum_assured_multiple=sum_assured_multiple,
+                    iteration_index=i,
                 )
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
@@ -1221,7 +1306,7 @@ def generate_test_cases(
                     get_api_operation(target_rule),
                     CHECKING_NOTE_CREATE_VALUE,
                     ppt_name,
-                    SCENARIO_MAP[target_rule](sam_band),
+                    SCENARIO_MAP[target_rule](ppt_name),
                     'Negative',
                     EXPECTED_RESULT_MAP['Negative'],
                     INCEPTION_DATE_VALUE,
@@ -1244,31 +1329,24 @@ def generate_test_cases(
                 append_scenario(common_row)
 
     # --- EPIC: PremiumPayingTerm ---
+    # Cases are generated per PPT (5/7/10/15/20 pay); the scenario states the
+    # premium paying term for that PPT.
     # Min PPT 5 for SAM 10-14; Min PPT 15 for SAM 15-20.
     if 'PremiumPayingTerm' in selected_epics:
         target_rule = 'PremiumPayingTerm'
         ppt_config = epic_counts.get(target_rule, {})
 
-        for sam_band, band_rule in SAM_BAND_RULES.items():
-            pos_count, neg_count = resolve_sam_band_counts(ppt_config, sam_band)
-            sam_low, sam_high = band_rule["sam_range"]
-            min_ppt = band_rule["min_ppt"]
-
-            valid_ppts = [
-                ppt for ppt in PPT_NAME if PPT_RULES[ppt]['charge_year'](30) >= min_ppt
-            ]
-            invalid_ppts = [
-                ppt for ppt in PPT_NAME if PPT_RULES[ppt]['charge_year'](30) < min_ppt
-            ]
-
+        for ppt_name in PPT_NAME:
+            pos_count, neg_count = resolve_ppt_case_counts(
+                target_rule, ppt_config, epic_counts, ppt_name
+            )
             for i in range(pos_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                ppt_name = valid_ppts[(idx + i) % len(valid_ppts)] if valid_ppts else PPT_NAME[0]
                 rule = PPT_RULES.get(ppt_name)
                 min_entry_age, max_entry_age = rule['entry_age_range']
                 positive_age = build_case_age(min_entry_age, max_entry_age, i)
-                sum_assured_multiple = random.randint(sam_low, sam_high)
+                sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
                 charge_year, coverage_year, maturity_year = get_years(
                     ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
                 )
@@ -1280,7 +1358,7 @@ def generate_test_cases(
                     get_api_operation(target_rule),
                     CHECKING_NOTE_CREATE_VALUE,
                     ppt_name,
-                    SCENARIO_MAP[target_rule](sam_band),
+                    SCENARIO_MAP[target_rule](ppt_name),
                     'Positive',
                     EXPECTED_RESULT_MAP['Positive'],
                     INCEPTION_DATE_VALUE,
@@ -1305,23 +1383,17 @@ def generate_test_cases(
             for i in range(neg_count):
                 tuid_counter += 1
                 idx = random.randint(0, 2)
-                # A PPT below the band minimum is the negative condition; when every
-                # PPT is valid for the band, force the charge year below the minimum.
-                if invalid_ppts:
-                    ppt_name = invalid_ppts[(idx + i) % len(invalid_ppts)]
-                    force_charge_year = None
-                else:
-                    ppt_name = PPT_NAME[(idx + i) % len(PPT_NAME)]
-                    force_charge_year = max(1, min_ppt - 1)
                 rule = PPT_RULES.get(ppt_name)
                 min_entry_age, max_entry_age = rule['entry_age_range']
                 positive_age = build_case_age(min_entry_age, max_entry_age, i)
-                sum_assured_multiple = random.randint(sam_low, sam_high)
+                sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
                 charge_year, coverage_year, maturity_year = get_years(
                     ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
                 )
-                if force_charge_year is not None:
-                    charge_year = force_charge_year
+                # The negative condition is a premium paying term below the
+                # minimum allowed for this row's own SA multiple.
+                row_min_ppt = min_ppt_for_multiple(sum_assured_multiple)
+                charge_year = max(1, row_min_ppt - 1 - (i // 2))
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
                 common_row = build_common_row(
@@ -1330,7 +1402,7 @@ def generate_test_cases(
                     get_api_operation(target_rule),
                     CHECKING_NOTE_CREATE_VALUE,
                     ppt_name,
-                    SCENARIO_MAP[target_rule](sam_band),
+                    SCENARIO_MAP[target_rule](ppt_name),
                     'Negative',
                     EXPECTED_RESULT_MAP['Negative'],
                     INCEPTION_DATE_VALUE,
@@ -1525,11 +1597,11 @@ def generate_test_cases(
                 sum_assured_multiple=sum_assured_multiple,
                 portfolio_type="SELFMANAGED",
             )
-            # Fund allocation that does not add up to 100 is the negative condition.
+            # Fund allocation that does not add up to 100 is the negative
+            # condition. Self-managed spreads across several funds, so the
+            # invalid total is distributed the same way a valid one would be.
             invalid_total = random.choice([90, 95, 105, 110])
-            for fund in FUND_COLUMNS:
-                common_row[fund] = 0
-            common_row["DebtFundPercentage"] = invalid_total
+            common_row.update(build_fund_allocation("SELFMANAGED", invalid_total))
             common_row["Total Fund Allocated"] = invalid_total
             append_scenario(common_row)
 
