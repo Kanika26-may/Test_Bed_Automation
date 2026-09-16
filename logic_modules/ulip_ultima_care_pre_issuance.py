@@ -106,7 +106,8 @@ EPIC_MAP = {
     'PolicyTerm': 'Check for Policy Term',
     'PremiumPayingTerm': 'Check for Premium Paying Term',
     'PaymentFrequency': 'Check for Premium payment frequencies',
-    'FundAllocation': 'Check for Fund Percentage (Self Managed)',
+    'FundAllocation': 'Check for fund percentage - selfmanaged',
+    'FundAllocationLifestyle': 'Check for fund percentage - lifestyle',
     'PremiumValidation': 'Check for Annual Premium Validation',
     'ITermCareSumAssured': 'Check iTerm Care Sum Assured is within 3 lakh - 35 lakh',
     'ComboSumAssured': "Check combo iTerm Care Sum Assured is <= Ultima Plus (base) Sum Assured",
@@ -217,6 +218,22 @@ def total_sum_assured_message():
     )
 
 
+def lifestyle_fund_allocation_message(coverage_year=None):
+    """Lifestyle allocation rule stated for a policy term."""
+    if coverage_year is None:
+        return (
+            "User allocates investment in lifestyle based portfolio strategy; "
+            "allocation across Secure, Debt and Blue Chip Equity funds should "
+            "follow the years to maturity"
+        )
+    secure, debt, blue_chip = lifestyle_allocation_for_term(coverage_year)
+    return (
+        f"For a policy term of {int(coverage_year)} years, the lifestyle based "
+        f"portfolio strategy should allocate Secure Fund {secure:.2f}%, "
+        f"Debt Fund {debt:.2f}% and Blue Chip Equity Fund {blue_chip:.2f}%"
+    )
+
+
 def premium_validation_message():
     return (
         f"Min annual/annualized premium for the base plan (ULIP/Savings) to be "
@@ -231,6 +248,7 @@ SCENARIO_MAP = {
     'PaymentFrequency': "To check for premium Frequency chosen should be yearly only (Other frequencies not allowed)",
     'PremiumPayingTerm': min_ppt_message,
     'FundAllocation': "User allocates investment in self-managed strategy",
+    'FundAllocationLifestyle': lifestyle_fund_allocation_message,
     'PremiumValidation': premium_validation_message,
     'ITermCareSumAssured': iterm_care_sum_assured_message,
     'ComboSumAssured': combo_sum_assured_message,
@@ -357,25 +375,92 @@ def resolve_api_name(ppt_name):
 def normalize_age_value(age):
     if age is None:
         return age
+    # An (years, months, days) age is already exact; keep only the completed
+    # years, which is the age the system reads off the birthdate.
+    if isinstance(age, AgeYMD):
+        return age.years
     if age >= 1:
         return int(round(age))
     return int(math.floor(age))
 
 
+class AgeYMD:
+    """An exact entry age expressed as completed years, months and days.
+
+    Whole-year ages are enough for most epics, but the entry age boundaries have
+    to distinguish "45 years, 11 months, 30 days" (the last eligible day) from
+    "46 years exactly" (the first ineligible one). Those differ by a single day
+    of birthdate, so they cannot be expressed as a plain integer age.
+    """
+
+    __slots__ = ("years", "months", "days")
+
+    def __init__(self, years, months=0, days=0):
+        self.years = int(years)
+        self.months = int(months)
+        self.days = int(days)
+
+    def __int__(self):
+        return self.years
+
+    def __index__(self):
+        return self.years
+
+    def __repr__(self):
+        return f"AgeYMD({self.years}, {self.months}, {self.days})"
+
+
+def subtract_months(reference_date, months):
+    """Shift a date back by whole months, clamping to the month's last day."""
+    month_index = (reference_date.year * 12 + (reference_date.month - 1)) - months
+    year, month = divmod(month_index, 12)
+    month += 1
+    # Feb 30 does not exist, so clamp to the last valid day of the target month.
+    if month == 12:
+        next_month_start = date(year + 1, 1, 1)
+    else:
+        next_month_start = date(year, month + 1, 1)
+    last_day = (next_month_start - pd.Timedelta(days=1)).day
+    return date(year, month, min(reference_date.day, last_day))
+
+
 def build_birthdate_for_age(age, reference_date=None):
+    """Birthdate of someone who is exactly `age` old on the reference date."""
     ref_date = reference_date or date.today()
+    if isinstance(age, AgeYMD):
+        if age.months or age.days:
+            # "N years, 11 months, 30 days" means the person turns N+1 tomorrow,
+            # so anchor on the birthdate that lands the next birthday one day
+            # after the reference date and step back the N+1 years from there.
+            # Deriving it this way keeps the result strictly inside the year,
+            # which naive month-then-day subtraction does not guarantee.
+            next_birthday = (pd.Timestamp(ref_date) + pd.Timedelta(days=1)).date()
+            birth = subtract_months(next_birthday, (age.years + 1) * 12)
+            return birth.isoformat()
+        birth = subtract_months(ref_date, age.years * 12)
+        return birth.isoformat()
     return f"{ref_date.year - int(age)}-01-01"
+
+
+def resolve_reference_date(value=None):
+    """The inception date the ages are measured against."""
+    try:
+        return date.fromisoformat(str(value or INCEPTION_DATE_VALUE))
+    except (TypeError, ValueError):
+        return date.today()
 
 
 def build_person_context(age, gender, reference_date=None):
     """Ultima Care entry age starts at 18, so LA and PH are always the same person."""
-    ref_date = reference_date or date.today()
+    ref_date = reference_date or resolve_reference_date()
     la_age = normalize_age_value(age)
     la_gender = gender
     ph_age = la_age
     ph_gender = la_gender
-    la_birthdate = build_birthdate_for_age(la_age, reference_date=ref_date)
-    ph_birthdate = build_birthdate_for_age(ph_age, reference_date=ref_date)
+    # Pass the original age through so an exact (y, m, d) boundary keeps its
+    # day-level precision in the birthdate.
+    la_birthdate = build_birthdate_for_age(age, reference_date=ref_date)
+    ph_birthdate = build_birthdate_for_age(age, reference_date=ref_date)
     la_gender_c = "M" if la_gender == "Male" else "F"
     ph_gender_c = "M" if ph_gender == "Male" else "F"
     return {
@@ -396,17 +481,101 @@ def build_person_context(age, gender, reference_date=None):
     }
 
 
-def build_fund_allocation(portfolio_type, total=None):
+# Lifestyle Based Portfolio Strategy allocates by years to maturity (the policy
+# term). Terms of 12 and above sit entirely in Blue Chip Equity; from 11 years
+# down the mix shifts progressively into Debt.
+# (Secure Fund %, Debt Fund %, Blue Chip Equity Fund %)
+# Only policy terms of 10, 15, 20, 25 and 30 are orderable, so the allocation
+# has just two outcomes: PT 10 keeps 10% in Debt, and every longer term sits
+# entirely in Blue Chip Equity.
+LIFESTYLE_ALLOCATION_BY_TERM = {
+    10: (0, 10, 90),
+}
+LIFESTYLE_LONG_TERM_ALLOCATION = (0, 0, 100)
+
+
+def lifestyle_allocation_for_term(coverage_year):
+    """The prescribed (Secure, Debt, Blue Chip) split for a policy term."""
+    if coverage_year is None:
+        return LIFESTYLE_LONG_TERM_ALLOCATION
+    return LIFESTYLE_ALLOCATION_BY_TERM.get(
+        int(coverage_year), LIFESTYLE_LONG_TERM_ALLOCATION
+    )
+
+
+def build_lifestyle_fund_allocation(coverage_year):
+    """Fund columns filled in with the lifestyle split for this policy term."""
+    secure, debt, blue_chip = lifestyle_allocation_for_term(coverage_year)
+    allocation = {fund: 0 for fund in FUND_COLUMNS}
+    allocation["SecureFundPercentage"] = secure
+    allocation["DebtFundPercentage"] = debt
+    allocation["BlueChipFundPercentage"] = blue_chip
+    return allocation
+
+
+# Totals that are not 100, mirroring the self-managed negative cases.
+INVALID_FUND_TOTALS = [90, 95, 105, 110]
+
+
+def build_invalid_lifestyle_fund_allocation(coverage_year, iteration_index):
+    """A lifestyle allocation the strategy should reject.
+
+    Two ways it can be wrong, alternating so both are covered. Odd iterations
+    keep the total at 100 but split it differently from the mix prescribed for
+    the policy term; even iterations use the prescribed split but scale it to a
+    total other than 100, the same failure the self-managed epic exercises.
+
+    Returns the fund columns and the total to report, which is not always 100.
+    """
+    prescribed = lifestyle_allocation_for_term(coverage_year)
+    wrong_split_variants = [
+        # The split prescribed for the *other* policy term, which is wrong for
+        # this one: PT 10 gets the long-term 0/0/100, longer terms get 0/10/90.
+        (0, 0, 100) if prescribed == (0, 10, 90) else (0, 10, 90),
+        # Secure Fund is never used by the lifestyle strategy.
+        (10, 0, 90),
+        # Everything in Debt.
+        (0, 100, 0),
+        # Everything in Secure.
+        (100, 0, 0),
+        # Debt overweighted well past any prescribed split.
+        (0, 50, 50),
+    ]
+    pair_index = iteration_index // 2
+    if iteration_index % 2:
+        secure_v, debt_v, blue_v = wrong_split_variants[
+            pair_index % len(wrong_split_variants)
+        ]
+        total = 100
+    else:
+        # Right shape, wrong total: the surplus or shortfall lands on Blue Chip,
+        # the fund the lifestyle strategy leans on, so only the total is off.
+        total = INVALID_FUND_TOTALS[pair_index % len(INVALID_FUND_TOTALS)]
+        secure_v, debt_v, blue_v = prescribed
+        blue_v += total - 100
+    allocation = {fund: 0 for fund in FUND_COLUMNS}
+    allocation["SecureFundPercentage"] = secure_v
+    allocation["DebtFundPercentage"] = debt_v
+    allocation["BlueChipFundPercentage"] = blue_v
+    return allocation, total
+
+
+def build_fund_allocation(portfolio_type, total=None, coverage_year=None):
     """Spread `total` across the fund columns for the given portfolio type.
 
-    Lifestyle puts everything in one fund; self-managed splits the total across
-    several funds, which is what the user is choosing when they self-manage.
+    Lifestyle follows the prescribed split for the policy term; self-managed
+    splits the total across several funds, which is what the user is choosing
+    when they self-manage.
     """
     portfolio_type = normalize_portfolio_type(portfolio_type)
     if total is None:
         total = TOTAL_FUND_ALLOCATED_DEFAULT
     allocation = {fund: 0 for fund in FUND_COLUMNS}
     if portfolio_type == "LIFESTYLE":
+        if total == TOTAL_FUND_ALLOCATED_DEFAULT:
+            return build_lifestyle_fund_allocation(coverage_year)
+        # A deliberately invalid total still goes to the fund the lifestyle
+        # strategy leans on, so the row differs only in the total.
         allocation["BlueChipFundPercentage"] = total
         return allocation
     # Self-managed means a real spread, so always use at least two funds.
@@ -701,15 +870,26 @@ def get_out_of_range_maturity_year(
 def build_case_age(min_age, max_age, iteration_index):
     """Positive ages: boundary values first, then spread across the range.
 
-    Index 0 and 1 are the exact minimum and maximum, 2 and 3 are one step inside
-    each boundary (the edge cases). From index 4 the values are spread evenly
-    through the interior of the range so mid-range ages are covered too.
+    Index 0 and 1 are the exact minimum and maximum entry ages. Index 2 is the
+    last eligible day before the maximum age is exceeded (max age, 11 months and
+    30 days), which is the tightest valid boundary. Index 3 and 4 sit one step
+    inside each boundary. From index 5 the values are spread evenly through the
+    interior of the range so mid-range ages are covered too.
     """
     min_age = int(min_age)
     max_age = int(max_age)
     if max_age <= min_age:
         return min_age
-    edges = [min_age, max_age, min(min_age + 1, max_age), max(max_age - 1, min_age)]
+    edges = [
+        # Minimum entry age: exactly 18 years.
+        AgeYMD(min_age, 0, 0),
+        # Maximum entry age: exactly 45 years.
+        AgeYMD(max_age, 0, 0),
+        # Last valid day before turning max_age + 1.
+        AgeYMD(max_age, 11, 30),
+        min(min_age + 1, max_age),
+        max(max_age - 1, min_age),
+    ]
     if iteration_index < len(edges):
         return edges[iteration_index]
     # Walk the interior in evenly spaced steps, wrapping as the count grows.
@@ -737,18 +917,49 @@ def build_random_age(min_age, max_age):
 def build_entry_age_negative(min_age, max_age, iteration_index, ppt_name):
     """Invalid ages, just-outside boundaries first.
 
-    Index 0 and 1 are one year below the minimum and one above the maximum (the
-    edge cases); later indexes move further outside the valid range.
+    Index 0 is the last invalid day before the minimum entry age is reached (17
+    years, 11 months, 30 days) and index 1 is the first age past the maximum (46
+    years exactly) - the two tightest invalid boundaries. Index 2 and 3 are a
+    whole year outside each boundary; later indexes move further out.
     """
     min_age = int(min_age)
     max_age = int(max_age)
-    edges = [max(0, min_age - 1), max_age + 1, max(0, min_age - 2), max_age + 2]
+    edges = [
+        # Last invalid day before reaching the minimum entry age.
+        AgeYMD(max(0, min_age - 1), 11, 30),
+        # First age that exceeds the maximum entry age.
+        AgeYMD(max_age + 1, 0, 0),
+        max(0, min_age - 1),
+        max_age + 2,
+    ]
     if iteration_index < len(edges):
         return edges[iteration_index]
     offset = (iteration_index - len(edges)) // 2 + 3
     if iteration_index % 2 == 0:
         return max(0, min_age - offset)
     return max_age + offset
+
+
+# Ultima Care allows only 5, 7, 10, 15 and 20 pay, so any other premium paying
+# term is invalid. The values that sit *between* the allowed ones are the
+# interesting negatives: they are inside the overall 5-20 span, so a rule that
+# only range-checks the term would wrongly accept them.
+VALID_PREMIUM_PAYING_TERMS = [5, 7, 10, 15, 20]
+INVALID_PREMIUM_PAYING_TERMS = [6, 8, 9, 11, 14, 16, 19, 21]
+
+
+def build_invalid_premium_paying_term(iteration_index, min_ppt=None):
+    """An invalid premium paying term, in-between values first.
+
+    The in-between values (6, 8, 9, 11, 14, 16, 19, 21) are cycled through first.
+    Once they are exhausted the terms move below the SAM band's minimum, which is
+    the other way a premium paying term can be invalid.
+    """
+    if iteration_index < len(INVALID_PREMIUM_PAYING_TERMS):
+        return INVALID_PREMIUM_PAYING_TERMS[iteration_index]
+    floor = min_ppt if min_ppt is not None else min(VALID_PREMIUM_PAYING_TERMS)
+    step = iteration_index - len(INVALID_PREMIUM_PAYING_TERMS)
+    return max(1, floor - 1 - step)
 
 
 def build_case_sum_assured(min_sum, max_sum, iteration_index):
@@ -896,12 +1107,16 @@ def build_common_row(
     if sum_assured_multiple is None:
         sum_assured_multiple = pick_sum_assured_multiple()
 
+    # Keep the exact age for the person context so an (y, m, d) boundary keeps
+    # its day-level precision in the birthdate; everything else uses the
+    # completed years.
+    exact_age = age
     age = normalize_age_value(age)
-    person_ctx = build_person_context(age, gender)
+    person_ctx = build_person_context(exact_age, gender)
     sum_assured = ensure_thousand_multiple(discount_info.get("sumAssured") or 0)
     portfolio_type = normalize_portfolio_type(portfolio_type or CURRENT_PORTFOLIO_TYPE)
     portfolio_strategy = PORTFOLIO_STRATEGY_MAP.get(portfolio_type, "")
-    fund_allocation = build_fund_allocation(portfolio_type)
+    fund_allocation = build_fund_allocation(portfolio_type, coverage_year=coverage_year)
 
     # Yearly only, so the installment premium equals the annualized premium.
     # It must be a minimum of 50,000 and in multiples of INSTALLMENT_PREMIUM_STEP,
@@ -1390,10 +1605,12 @@ def generate_test_cases(
                 charge_year, coverage_year, maturity_year = get_years(
                     ppt_name, positive_age, sum_assured_multiple=sum_assured_multiple
                 )
-                # The negative condition is a premium paying term below the
-                # minimum allowed for this row's own SA multiple.
+                # The negative condition is a premium paying term that Ultima
+                # Care does not offer: first the values between the allowed
+                # 5/7/10/15/20 pay terms, then terms below the minimum allowed
+                # for this row's own SA multiple.
                 row_min_ppt = min_ppt_for_multiple(sum_assured_multiple)
-                charge_year = max(1, row_min_ppt - 1 - (i // 2))
+                charge_year = build_invalid_premium_paying_term(i, row_min_ppt)
                 discount_info = calculate_discounts(ppt_name)
                 payment_freq = random.choice(PAYMENT_FREQUENCY)
                 common_row = build_common_row(
@@ -1509,6 +1726,103 @@ def generate_test_cases(
                 idx,
                 sum_assured_multiple=sum_assured_multiple,
             )
+            append_scenario(common_row)
+
+    # --- EPIC: FundAllocationLifestyle ---
+    # Lifestyle Based Portfolio Strategy allocates by years to maturity. Only
+    # policy terms of 10/15/20/25/30 are orderable, so PT 10 puts 10% in Debt
+    # and 90% in Blue Chip Equity, and every longer term is fully Blue Chip.
+    if 'FundAllocationLifestyle' in selected_epics:
+        target_rule = 'FundAllocationLifestyle'
+        counts = epic_counts.get(target_rule, {'positive': 0, 'negative': 0})
+
+        for i in range(int(counts.get('positive', 0))):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            ppt_name = PPT_NAME[(idx + i) % len(PPT_NAME)]
+            rule = PPT_RULES.get(ppt_name)
+            min_entry_age, max_entry_age = rule['entry_age_range']
+            age = build_random_age(min_entry_age, max_entry_age)
+            sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
+            charge_year, coverage_year, maturity_year = get_years(
+                ppt_name, age, sum_assured_multiple=sum_assured_multiple
+            )
+            discount_info = calculate_discounts(ppt_name)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                SCENARIO_MAP[target_rule](coverage_year),
+                'Positive',
+                EXPECTED_RESULT_MAP['Positive'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                MEDICAL_INDI,
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                random.choice(PAYMENT_FREQUENCY),
+                discount_info,
+                idx,
+                sum_assured_multiple=sum_assured_multiple,
+                portfolio_type="LIFESTYLE",
+            )
+            append_scenario(common_row)
+
+        for i in range(int(counts.get('negative', 0))):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            ppt_name = PPT_NAME[(idx + i) % len(PPT_NAME)]
+            rule = PPT_RULES.get(ppt_name)
+            min_entry_age, max_entry_age = rule['entry_age_range']
+            age = build_random_age(min_entry_age, max_entry_age)
+            sum_assured_multiple = pick_sum_assured_multiple_for_ppt(ppt_name)
+            charge_year, coverage_year, maturity_year = get_years(
+                ppt_name, age, sum_assured_multiple=sum_assured_multiple
+            )
+            discount_info = calculate_discounts(ppt_name)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                SCENARIO_MAP[target_rule](coverage_year),
+                'Negative',
+                EXPECTED_RESULT_MAP['Negative'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                MEDICAL_INDI,
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                random.choice(PAYMENT_FREQUENCY),
+                discount_info,
+                idx,
+                sum_assured_multiple=sum_assured_multiple,
+                portfolio_type="LIFESTYLE",
+            )
+            # The negative condition is either a split that does not match the
+            # one prescribed for this policy term, or a total other than 100.
+            invalid_allocation, invalid_total = build_invalid_lifestyle_fund_allocation(
+                coverage_year, i
+            )
+            common_row.update(invalid_allocation)
+            common_row["Total Fund Allocated"] = invalid_total
             append_scenario(common_row)
 
     # --- EPIC: FundAllocation ---
