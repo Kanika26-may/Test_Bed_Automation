@@ -1428,6 +1428,19 @@ def render_base_plan_epics(
 
 
     min_entry_age = ppt_config["entry_age"]["Regular Pay"][0]
+    # The two fund allocation epics belong to opposite portfolio strategies, so
+    # only the one matching the selected Portfolio Type is offered: a Lifestyle
+    # run generates lifestyle cases only, and vice versa.
+    hidden_epics = set()
+    if is_ultima_care:
+        portfolio_type = st.session_state.get(
+            lifecycle_key(lifecycle_key_prefix, "portfolio_type"), "LIFESTYLE"
+        )
+        hidden_epics.add(
+            "FundAllocation"
+            if portfolio_type == "LIFESTYLE"
+            else "FundAllocationLifestyle"
+        )
     selected_plan_option = None
     select_all = st.checkbox(
         "Select/Deselect All Epics",
@@ -1437,6 +1450,8 @@ def render_base_plan_epics(
 
     with st.expander("\u2139\ufe0f Configure Epics and Case Counts", expanded=True):
         for epic_key, epic_desc in epic_map.items():
+            if epic_key in hidden_epics:
+                continue
 
             if plan_type == "saving plan":
                 ppt="Regular Pay"  # For saving plan, show sliders for Regular Pay configuration as default
