@@ -100,6 +100,11 @@ PPT_NAME = [
     "Limited Pay (20 pay)",
 ]
 
+# The policy term can never be shorter than the premium paying term, so a PT of
+# 10 is only orderable on these, and a PT of 15+ with SAM 15-20 only on those.
+SHORT_TERM_PPT_NAMES = PPT_NAME[:3]
+LONG_TERM_PPT_NAMES = PPT_NAME[3:]
+
 EPIC_MAP = {
     'EntryAge': 'Check for Minimum - Maximum Entry Age',
     'MaturityAge': 'Check for Minimum - Maximum Maturity Age',
@@ -108,6 +113,7 @@ EPIC_MAP = {
     'PaymentFrequency': 'Check for Premium payment frequencies',
     'FundAllocation': 'Check for fund percentage - selfmanaged',
     'FundAllocationLifestyle': 'Check for fund percentage - lifestyle',
+    'SumAssuredMultiple': 'Check for Sum Assured Multiple',
     'PremiumValidation': 'Check for Annual Premium Validation',
     'ITermCareSumAssured': 'Check iTerm Care Sum Assured is within 3 lakh - 35 lakh',
     'ComboSumAssured': "Check combo iTerm Care Sum Assured is <= Ultima Plus (base) Sum Assured",
@@ -153,6 +159,58 @@ def sam_band_for_multiple(sum_assured_multiple):
         if low <= sum_assured_multiple <= high:
             return band
     return "SAM 15-20"
+
+
+def sam_range_for_policy_term(coverage_year):
+    """Allowed SA multiple range for a policy term.
+
+    Read the other way round from `policy_term_min_for_multiple`: a multiple of
+    15 or more needs a PT of at least 15, so a PT of 10 is capped at 10-14 while
+    a PT of 15 or more admits the full 10-20.
+    """
+    low = SAM_BAND_RULES["SAM 10-14"]["sam_range"][0]
+    if int(coverage_year) < 15:
+        return low, SAM_BAND_RULES["SAM 10-14"]["sam_range"][1]
+    return low, SAM_BAND_RULES["SAM 15-20"]["sam_range"][1]
+
+
+def invalid_sam_for_policy_term(coverage_year, iteration_index=0):
+    """A SA multiple outside the range the policy term allows.
+
+    Both terms are invalid just below the overall minimum and just above the
+    overall maximum. A PT of 10 is additionally invalid across the whole 15-20
+    band, which requires a PT of at least 15.
+    """
+    overall_low = SAM_BAND_RULES["SAM 10-14"]["sam_range"][0]
+    overall_high = SAM_BAND_RULES["SAM 15-20"]["sam_range"][1]
+    candidates = [overall_low - 1, overall_high + 1]
+    if int(coverage_year) < 15:
+        band_low, band_high = SAM_BAND_RULES["SAM 15-20"]["sam_range"]
+        candidates = (
+            [overall_low - 1]
+            + list(range(band_low, band_high + 1))
+            + [overall_high + 1]
+        )
+    return candidates[iteration_index % len(candidates)]
+
+
+def sum_assured_multiple_message(coverage_year=None):
+    """SA multiple rule stated for a policy term."""
+    if coverage_year is None:
+        return (
+            "Sum Assured multiple should follow the policy term: 10-14 for a "
+            "policy term of 10 years and 10-20 for 15 years or more"
+        )
+    low, high = sam_range_for_policy_term(coverage_year)
+    term_text = (
+        "is 10 years"
+        if int(coverage_year) < 15
+        else "is greater than or equal to 15 years"
+    )
+    return (
+        f"To check SA multiple when Policy term {term_text}; "
+        f"SA multiple should be between {low}-{high}"
+    )
 
 
 def premium_paying_term_message(ppt, min_ppt=None, max_ppt=None, ppt_limit=None):
@@ -249,6 +307,7 @@ SCENARIO_MAP = {
     'PremiumPayingTerm': min_ppt_message,
     'FundAllocation': "User allocates investment in self-managed strategy",
     'FundAllocationLifestyle': lifestyle_fund_allocation_message,
+    'SumAssuredMultiple': sum_assured_multiple_message,
     'PremiumValidation': premium_validation_message,
     'ITermCareSumAssured': iterm_care_sum_assured_message,
     'ComboSumAssured': combo_sum_assured_message,
@@ -1917,6 +1976,126 @@ def generate_test_cases(
             invalid_total = random.choice([90, 95, 105, 110])
             common_row.update(build_fund_allocation("SELFMANAGED", invalid_total))
             common_row["Total Fund Allocated"] = invalid_total
+            append_scenario(common_row)
+
+    # --- EPIC: SumAssuredMultiple ---
+    # The SA multiple is bounded by the policy term: PT 10 allows 10-14 and
+    # PT 15 or more allows 15-20. Cases alternate between the two terms so both
+    # rows of the condition are covered.
+    if 'SumAssuredMultiple' in selected_epics:
+        target_rule = 'SumAssuredMultiple'
+        counts = epic_counts.get(target_rule, {'positive': 0, 'negative': 0})
+
+        def sam_epic_case(iteration_index):
+            """A PT and a PPT that can actually carry it, alternating the band.
+
+            SAM 15-20 needs a PPT of at least 15, and the policy term can never
+            be shorter than the PPT, so a PT of 10 is paired with a 5/7/10 pay
+            and the longer terms with a 15/20 pay.
+            """
+            if iteration_index % 2 == 0:
+                coverage_year = 10
+                ppt_name = SHORT_TERM_PPT_NAMES[
+                    iteration_index % len(SHORT_TERM_PPT_NAMES)
+                ]
+            else:
+                ppt_name = LONG_TERM_PPT_NAMES[
+                    iteration_index % len(LONG_TERM_PPT_NAMES)
+                ]
+                min_term = PPT_RULES[ppt_name]['charge_year'](MIN_ENTRY_AGE)
+                coverage_year = max(15, round_up_to_step(min_term, POLICY_TERM_STEP))
+            return ppt_name, coverage_year
+
+        for i in range(int(counts.get('positive', 0))):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            ppt_name, coverage_year = sam_epic_case(i)
+            rule = PPT_RULES.get(ppt_name)
+            min_entry_age, max_entry_age = rule['entry_age_range']
+            # The maturity age caps the entry age once the term is fixed.
+            age = build_case_age(
+                min_entry_age, min(max_entry_age, MAX_MATURITY_AGE - coverage_year), i
+            )
+            low, high = sam_range_for_policy_term(coverage_year)
+            sum_assured_multiple = random.randint(low, high)
+            # The term is already fixed, so only the charge and maturity years
+            # are derived, off the completed years the system reads.
+            age_years = normalize_age_value(age)
+            charge_year = rule['charge_year'](age_years)
+            maturity_year = rule['maturity_year'](age_years, coverage_year)
+            discount_info = calculate_discounts(ppt_name)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                SCENARIO_MAP[target_rule](coverage_year),
+                'Positive',
+                EXPECTED_RESULT_MAP['Positive'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                MEDICAL_INDI,
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                random.choice(PAYMENT_FREQUENCY),
+                discount_info,
+                idx,
+                sum_assured_multiple=sum_assured_multiple,
+            )
+            append_scenario(common_row)
+
+        for i in range(int(counts.get('negative', 0))):
+            tuid_counter += 1
+            idx = random.randint(0, 2)
+            ppt_name, coverage_year = sam_epic_case(i)
+            rule = PPT_RULES.get(ppt_name)
+            min_entry_age, max_entry_age = rule['entry_age_range']
+            age = build_case_age(
+                min_entry_age, min(max_entry_age, MAX_MATURITY_AGE - coverage_year), i
+            )
+            # The negative condition is a multiple outside the band the policy
+            # term allows, the term itself staying valid. The terms alternate,
+            # so each one walks its own candidate list rather than taking every
+            # second value from it.
+            sum_assured_multiple = invalid_sam_for_policy_term(coverage_year, i // 2)
+            age_years = normalize_age_value(age)
+            charge_year = rule['charge_year'](age_years)
+            maturity_year = rule['maturity_year'](age_years, coverage_year)
+            discount_info = calculate_discounts(ppt_name)
+            common_row = build_common_row(
+                tuid_counter,
+                MODULE_NAME,
+                get_api_operation(target_rule),
+                CHECKING_NOTE_CREATE_VALUE,
+                ppt_name,
+                SCENARIO_MAP[target_rule](coverage_year),
+                'Negative',
+                EXPECTED_RESULT_MAP['Negative'],
+                INCEPTION_DATE_VALUE,
+                random.choice(policy_holder_location),
+                random.choice(insurer_location),
+                current_year - int(age),
+                age,
+                random.choice(GENDER),
+                random.choice(SMOKING),
+                MEDICAL_INDI,
+                PRODUCT_CODE,
+                coverage_year,
+                charge_year,
+                maturity_year,
+                random.choice(PAYMENT_FREQUENCY),
+                discount_info,
+                idx,
+                sum_assured_multiple=sum_assured_multiple,
+            )
             append_scenario(common_row)
 
     # --- EPIC: PremiumValidation ---

@@ -1,0 +1,478 @@
+# Ultima Care issuance.
+#
+# Ultima Care is a combo of two products: Ultima Plus (the ULIP base, "primary")
+# and iTerm Care (the term rider, "secondary"). The issuance stage reuses the
+# whole pre-issuance policy-construction chain (ages, terms, funds, sum assured)
+# and adds the six partner/commission columns plus the issuance-only epics.
+import random
+
+import pandas as pd
+from datetime import date
+
+from logic_modules import ulip_ultima_care_pre_issuance as base
+
+# Re-exported so callers that read these off the module keep working.
+PRODUCT_CODE = base.PRODUCT_CODE
+PPT_NAME = base.PPT_NAME
+PPT_RULES = base.PPT_RULES
+EXPECTED_RESULT_MAP = base.EXPECTED_RESULT_MAP
+INCEPTION_DATE_VALUE = base.INCEPTION_DATE_VALUE
+CHECKING_NOTE_CREATE_VALUE = base.CHECKING_NOTE_CREATE_VALUE
+MEDICAL_INDI = base.MEDICAL_INDI
+GENDER = base.GENDER
+SMOKING = base.SMOKING
+PAYMENT_FREQUENCY = base.PAYMENT_FREQUENCY
+MIN_ANNUALIZED_PREMIUM = base.MIN_ANNUALIZED_PREMIUM
+
+MODULE_NAME = "Ultima Care"
+LIFECYCLE_STAGE = "issuance"
+
+# The single partner Ultima Care is issued through. Every row carries it, so
+# these four values are constant across all epics.
+AGENT_CODE = 20000001
+PARTNER_NAME = "BANDHAN BANK"
+AGENT_TYPE = "CA"
+AGENT_TENANT_ID = "BANDHANBANK"
+
+# Commission is paid per product in the combo: Ultima Plus (primary) is 0% and
+# iTerm Care (secondary) is 3%.
+COMMISSION_RATE_PRIMARY = 0
+COMMISSION_RATE_SECONDARY = 3
+# Negative commission cases pick any other rate in this range.
+COMMISSION_RATE_NEGATIVE_RANGE = (0, 10)
+
+# Top up rules: the amount is between 5,000 and the installment premium, the top
+# up sum assured is 125% of it, and the total of all top ups cannot exceed the
+# premiums paid to date.
+TOP_UP_MIN_AMOUNT = 5000
+TOP_UP_SA_MULTIPLE = 1.25
+TOP_UP_STEP = 1000
+
+# Charge rules verified at issuance.
+PREMIUM_ALLOCATION_CHARGE_PERCENT = 12
+POLICY_ADMIN_CHARGE_PERCENT = 0.085
+
+EPIC_MAP = {
+    'TopUpSumAssured': 'Top up Sum assured',
+    'TopUp': 'Top up',
+    'PremiumAllocationCharge': 'Premium Allocation charge',
+    'MortalityDeduction': (
+        'Mortality deduction on monthly basis irrespective of Frequency'
+    ),
+    'PolicyAdministrationCharge': 'Policy Administration charge',
+    'CommissionRate': 'Commission rate',
+}
+
+EPIC_MAP_RIDER = {}
+
+
+def get_api_operation(key):
+    """Return the human readable API operation name for an epic key."""
+    return EPIC_MAP.get(key) or EPIC_MAP_RIDER.get(key) or key
+
+
+# The issuance sheet is the pre-issuance sheet plus the six partner/commission
+# columns, which sit after tenantId.
+column_order = list(base.column_order)
+_TENANT_INDEX = column_order.index("tenantId")
+column_order[_TENANT_INDEX:_TENANT_INDEX + 1] = [
+    "AgentCode",
+    "PartnerName",
+    "AgentType",
+    "tenantId",
+    "CommissionRatePrimary",
+    "CommissionRateSecondary",
+]
+
+
+def agent_fields(
+    commission_primary=COMMISSION_RATE_PRIMARY,
+    commission_secondary=COMMISSION_RATE_SECONDARY,
+):
+    """The six issuance columns. Only the commission epic varies the rates."""
+    return {
+        'AgentCode': AGENT_CODE,
+        'PartnerName': PARTNER_NAME,
+        'AgentType': AGENT_TYPE,
+        'tenantId': AGENT_TENANT_ID,
+        'CommissionRatePrimary': commission_primary,
+        'CommissionRateSecondary': commission_secondary,
+    }
+
+
+def resolve_simple_counts(epic_counts_local, target_rule):
+    counts = epic_counts_local.get(target_rule, {}) or {}
+    return (
+        int(counts.get('positive', 0) or 0),
+        int(counts.get('negative', 0) or 0),
+    )
+
+
+def round_to_step(value, step=TOP_UP_STEP):
+    return int(round(float(value) / step) * step)
+
+
+def pick_top_up_amount(installment_premium):
+    """A valid top up: somewhere between 5,000 and the installment premium.
+
+    The scenarios that pin the 5,000 and premium boundaries set those amounts
+    directly, so this picks an interior value.
+    """
+    upper = int(installment_premium)
+    if upper <= TOP_UP_MIN_AMOUNT:
+        return TOP_UP_MIN_AMOUNT
+    interior = round_to_step(random.randint(TOP_UP_MIN_AMOUNT, upper))
+    return min(max(interior, TOP_UP_MIN_AMOUNT), upper)
+
+
+def top_up_sum_assured(top_up_amount):
+    """Top up SA is 125% of the top up premium."""
+    return round(float(top_up_amount) * TOP_UP_SA_MULTIPLE, 2)
+
+
+def invalid_commission_rate(valid_rate, iteration_index=0):
+    """Any rate in 0-10 other than the valid one for that product."""
+    low, high = COMMISSION_RATE_NEGATIVE_RANGE
+    candidates = [rate for rate in range(low, high + 1) if rate != valid_rate]
+    return candidates[iteration_index % len(candidates)]
+
+
+# Scenario text per epic. Top up and Commission rate build their text inline
+# because it carries the amount / rate for that row.
+SCENARIO_MAP = {
+    'TopUpSumAssured': (
+        "To verify Top up SA applicable for policy holder is 125% of Top up "
+        "premium."
+    ),
+    'PremiumAllocationCharge': (
+        "To check premium allocation charges deducted for policy issued with "
+        f"non-direct channel during 1st policy year is "
+        f"{PREMIUM_ALLOCATION_CHARGE_PERCENT}% of premium for yearly mode."
+    ),
+    'MortalityDeduction': (
+        "To check if the mortality charges are deducted for policy post "
+        "issuance on monthly basis irrespective of premium payment frequency."
+    ),
+    'PolicyAdministrationCharge': (
+        "To check Policy Administration charge is "
+        f"{POLICY_ADMIN_CHARGE_PERCENT}% per month for first policy year."
+    ),
+}
+
+# The three charge epics share one shape: a single positive scenario with a
+# fixed text, generated from the same loop.
+CHARGE_EPICS = [
+    'PremiumAllocationCharge',
+    'MortalityDeduction',
+    'PolicyAdministrationCharge',
+]
+
+# Epics that assert what a value must be rather than reject a bad input, so
+# they carry positive cases only and the UI hides their negative counter.
+POSITIVE_ONLY_EPICS = {'TopUpSumAssured', *CHARGE_EPICS}
+
+
+def top_up_sum_assured_message(top_up_amount):
+    return (
+        "To verify Top up SA applicable for policy holder is 125% of Top up "
+        f"premium. Top up amount is {int(top_up_amount)}/- and Top up Sum "
+        f"Assured should be {top_up_sum_assured(top_up_amount)}/-"
+    )
+
+
+# The five Top up scenarios, in sheet order. `amount` is resolved per row
+# against the installment premium of that policy.
+TOP_UP_SCENARIOS = [
+    {
+        "key": "proportion",
+        "test_type": "Positive",
+        "text": (
+            "To verify sytem should allow to process Top-up any time during "
+            "policy journey where policy is in inforce and Top premium should "
+            "be allocated in the same proportion selected at the time of "
+            "inception of premium redirection whichever is later. Top up "
+            "amount is {amount}/-"
+        ),
+        "amount": "valid",
+    },
+    {
+        "key": "minimum",
+        "test_type": "Positive",
+        "text": (
+            "To verify sytem should allow to process Top up with minumum "
+            "amount as {amount}/-"
+        ),
+        "amount": "minimum",
+    },
+    {
+        "key": "below_minimum",
+        "test_type": "Negative",
+        "text": (
+            "To verify sytem should not allow to processTop up with amount as "
+            "{amount}/-"
+        ),
+        "amount": "below_minimum",
+    },
+    {
+        "key": "maximum",
+        "test_type": "Positive",
+        "text": (
+            "To verify sytem should allow to process Top up with maximum "
+            "amount equal to total premiums paid till date. Top up amount is "
+            "{amount}/-"
+        ),
+        "amount": "maximum",
+    },
+    {
+        "key": "above_maximum",
+        "test_type": "Negative",
+        "text": (
+            "To verify sytem should not allow  to process Top up with the "
+            "amount more than total premiums paid till date. Top up amount is "
+            "{amount}/-"
+        ),
+        "amount": "above_maximum",
+    },
+]
+
+# The two Commission rate scenarios, one per product in the combo. `column` is
+# the commission column that scenario validates and varies on a negative row.
+COMMISSION_SCENARIOS = [
+    {
+        "key": "iterm_care",
+        "product": "iTerm care",
+        "column": "CommissionRateSecondary",
+        "valid_rate": COMMISSION_RATE_SECONDARY,
+    },
+    {
+        "key": "ultima_plus",
+        "product": "Ultima plus",
+        "column": "CommissionRatePrimary",
+        "valid_rate": COMMISSION_RATE_PRIMARY,
+    },
+]
+
+
+def commission_rate_message(product, rate):
+    return f"To check commission rate for {product} should be {rate}%"
+
+
+def build_policy_context(ppt_name=None):
+    """Pick one valid Ultima Care policy: PPT, age, terms, discounts.
+
+    The issuance epics do not vary the policy itself, so each row just needs a
+    valid one that satisfies the SAM band / policy term rules.
+    """
+    if ppt_name is None:
+        ppt_name = random.choice(PPT_NAME)
+    rule = PPT_RULES[ppt_name]
+    min_entry_age, max_entry_age = rule['entry_age_range']
+    sum_assured_multiple = base.pick_sum_assured_multiple_for_ppt(ppt_name)
+    age = base.build_random_age(min_entry_age, max_entry_age)
+    charge_year, coverage_year, maturity_year = base.get_years(
+        ppt_name, age, sum_assured_multiple=sum_assured_multiple
+    )
+    return {
+        "ppt_name": ppt_name,
+        "age": age,
+        "charge_year": charge_year,
+        "coverage_year": coverage_year,
+        "maturity_year": maturity_year,
+        "sum_assured_multiple": sum_assured_multiple,
+        "discount_info": base.calculate_discounts(ppt_name),
+    }
+
+
+def generate_test_cases(
+    epic_counts,
+    selected_epics=None,
+    epic_counts_rider=None,
+    selected_epics_rider=None,
+    portfolio_type=None,
+    skip_testbed_load=False,
+):
+    if selected_epics is None:
+        selected_epics = []
+    if epic_counts is None:
+        epic_counts = {}
+
+    scenarios = []
+    tuid_counter = 0
+    current_year = date.today().year
+
+    base.set_current_portfolio_type(portfolio_type)
+
+    def make_emr_fields():
+        return {
+            'BaseEMR_extraType': 'EMR',
+            'BaseEMR_extraArith': 0 if skip_testbed_load else 8,
+            'BaseEMR_extraPara': 0 if skip_testbed_load else random.choice(
+                [round(i * 0.25, 2) for i in range(1, 17)]
+            ),
+            'BasePerMille_extraType': 'PER_MILE',
+            'BasePerMille_extraArith': 0 if skip_testbed_load else 1,
+            'BasePerMille_extraPara': 0 if skip_testbed_load else random.choice([1, 2]),
+        }
+
+    common_data = {
+        'PerMile': 0,
+        'EMRPeriod': 0,
+        'Standard Age Proof': 'Yes',
+        'Difference_Value': '',
+    }
+
+    def build_row(
+        target_rule,
+        scenario_text,
+        test_type,
+        ctx,
+        commission_primary=COMMISSION_RATE_PRIMARY,
+        commission_secondary=COMMISSION_RATE_SECONDARY,
+    ):
+        """Assemble one scenario row for the given epic and policy context."""
+        common_row = base.build_common_row(
+            tuid_counter,
+            MODULE_NAME,
+            get_api_operation(target_rule),
+            CHECKING_NOTE_CREATE_VALUE,
+            ctx["ppt_name"],
+            scenario_text,
+            test_type,
+            EXPECTED_RESULT_MAP[test_type],
+            INCEPTION_DATE_VALUE,
+            random.choice(base.policy_holder_location),
+            random.choice(base.insurer_location),
+            current_year - int(ctx["age"]),
+            ctx["age"],
+            random.choice(GENDER),
+            random.choice(SMOKING),
+            MEDICAL_INDI,
+            PRODUCT_CODE,
+            ctx["coverage_year"],
+            ctx["charge_year"],
+            ctx["maturity_year"],
+            random.choice(PAYMENT_FREQUENCY),
+            ctx["discount_info"],
+            random.randint(0, 2),
+            sum_assured_multiple=ctx["sum_assured_multiple"],
+        )
+        return {
+            **common_data,
+            **make_emr_fields(),
+            **common_row,
+            **agent_fields(commission_primary, commission_secondary),
+        }
+
+    # --- EPIC: Top up Sum assured ---
+    # Top up SA is 125% of the top up premium. Positive only: the rule states
+    # what the SA must be, so there is no invalid input to drive.
+    if 'TopUpSumAssured' in selected_epics:
+        target_rule = 'TopUpSumAssured'
+        pos_count, _ = resolve_simple_counts(epic_counts, target_rule)
+
+        for _ in range(pos_count):
+            tuid_counter += 1
+            ctx = build_policy_context()
+            row = build_row(target_rule, '', 'Positive', ctx)
+            top_up = pick_top_up_amount(row['installmentPremium'])
+            row['Test_Scenario'] = top_up_sum_assured_message(top_up)
+            scenarios.append(row)
+
+    # --- EPIC: Top up (5 scenarios) ---
+    if 'TopUp' in selected_epics:
+        target_rule = 'TopUp'
+        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
+        positive_scenarios = [
+            s for s in TOP_UP_SCENARIOS if s["test_type"] == 'Positive'
+        ]
+        negative_scenarios = [
+            s for s in TOP_UP_SCENARIOS if s["test_type"] == 'Negative'
+        ]
+
+        for scenario_defs, count in (
+            (positive_scenarios, pos_count),
+            (negative_scenarios, neg_count),
+        ):
+            # Each requested case walks the scenario list, so a count of 3 on a
+            # 3-scenario list covers each one exactly once.
+            for i in range(count * len(scenario_defs)):
+                scenario_def = scenario_defs[i % len(scenario_defs)]
+                tuid_counter += 1
+                ctx = build_policy_context()
+                row = build_row(
+                    target_rule, '', scenario_def["test_type"], ctx
+                )
+                installment_premium = row['installmentPremium']
+                amount_kind = scenario_def["amount"]
+                if amount_kind == "minimum":
+                    top_up = TOP_UP_MIN_AMOUNT
+                elif amount_kind == "maximum":
+                    top_up = int(installment_premium)
+                elif amount_kind == "below_minimum":
+                    top_up = TOP_UP_MIN_AMOUNT - 1
+                elif amount_kind == "above_maximum":
+                    top_up = int(installment_premium) + TOP_UP_STEP
+                else:
+                    top_up = pick_top_up_amount(installment_premium)
+                row['Test_Scenario'] = scenario_def["text"].format(
+                    amount=int(top_up)
+                )
+                scenarios.append(row)
+
+    # --- EPICS: Premium Allocation charge / Mortality deduction / Policy
+    # Administration charge ---
+    # Each checks that a charge is deducted at the configured rate, so each is a
+    # single positive scenario with a fixed text and no invalid input to drive.
+    for target_rule in CHARGE_EPICS:
+        if target_rule not in selected_epics:
+            continue
+        pos_count, _ = resolve_simple_counts(epic_counts, target_rule)
+
+        for _ in range(pos_count):
+            tuid_counter += 1
+            ctx = build_policy_context()
+            scenarios.append(
+                build_row(target_rule, SCENARIO_MAP[target_rule], 'Positive', ctx)
+            )
+
+    # --- EPIC: Commission rate (2 scenarios) ---
+    # Ultima Plus (primary) is 0% and iTerm Care (secondary) is 3%. A negative
+    # row varies only the column its own scenario validates; the other keeps its
+    # valid rate.
+    if 'CommissionRate' in selected_epics:
+        target_rule = 'CommissionRate'
+        pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
+
+        for test_type, count in (('Positive', pos_count), ('Negative', neg_count)):
+            for i in range(count * len(COMMISSION_SCENARIOS)):
+                scenario_def = COMMISSION_SCENARIOS[i % len(COMMISSION_SCENARIOS)]
+                iteration = i // len(COMMISSION_SCENARIOS)
+                tuid_counter += 1
+                ctx = build_policy_context()
+
+                rates = {
+                    'CommissionRatePrimary': COMMISSION_RATE_PRIMARY,
+                    'CommissionRateSecondary': COMMISSION_RATE_SECONDARY,
+                }
+                if test_type == 'Negative':
+                    rates[scenario_def["column"]] = invalid_commission_rate(
+                        scenario_def["valid_rate"], iteration
+                    )
+
+                scenarios.append(
+                    build_row(
+                        target_rule,
+                        commission_rate_message(
+                            scenario_def["product"], scenario_def["valid_rate"]
+                        ),
+                        test_type,
+                        ctx,
+                        commission_primary=rates['CommissionRatePrimary'],
+                        commission_secondary=rates['CommissionRateSecondary'],
+                    )
+                )
+
+    df = pd.DataFrame(scenarios)
+    if not df.empty:
+        df = df.reindex(columns=column_order)
+    return df

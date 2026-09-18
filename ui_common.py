@@ -46,7 +46,7 @@ ULIP_VARIANT_DEFAULT = "Ultima Plus"
 ULIP_VARIANT_MODULE_MAP = {
     "Ultima Care": {
         "pre issuance": "ulip_ultima_care_pre_issuance",
-        "issuance": "ulip_plan_issuance",
+        "issuance": "ulip_ultima_care_issuance",
         "post issuance": "ulip_plan_post_issuance",
     },
     "Ultima Plus": PLAN_LIFECYCLE_MODULE_MAP["ulip plan"],
@@ -935,6 +935,10 @@ POST_ISSUANCE_FREQUENCY_MAP = {
 }
 
 ULTIMA_CARE_MODULE = "ulip_ultima_care_pre_issuance"
+ULTIMA_CARE_ISSUANCE_MODULE = "ulip_ultima_care_issuance"
+# Both Ultima Care logic modules build Ultima Care policies, so both use the
+# Ultima Care PPT config and its yearly-only frequency rule.
+ULTIMA_CARE_MODULES = {ULTIMA_CARE_MODULE, ULTIMA_CARE_ISSUANCE_MODULE}
 
 
 def get_ppt_config(plan_type, module_name=None):
@@ -946,7 +950,7 @@ def get_ppt_config(plan_type, module_name=None):
     keep rendering standard ULIP epics.
     """
     if plan_type == "ulip plan" and get_selected_ulip_variant() == "Ultima Care":
-        if module_name is None or module_name == ULTIMA_CARE_MODULE:
+        if module_name is None or module_name in ULTIMA_CARE_MODULES:
             return PPT_CONFIGS["ultima care"]
     return PPT_CONFIGS.get(plan_type, PPT_CONFIGS["term plan"])
 
@@ -1400,7 +1404,7 @@ def render_base_plan_epics(
     module_file_name = getattr(logic_module, "__name__", None)
     ppt_config = get_ppt_config(plan_type, module_file_name)
     # Ultima Care positive cases are yearly only, so it offers no frequency picker.
-    is_ultima_care = module_file_name == ULTIMA_CARE_MODULE
+    is_ultima_care = module_file_name in ULTIMA_CARE_MODULES
     ppt_names = ppt_config["ppt_names"]
     entry_age_ppt_ranges = ppt_config["entry_age"]
     policy_term_ppt_ranges = ppt_config["policy_term"]
