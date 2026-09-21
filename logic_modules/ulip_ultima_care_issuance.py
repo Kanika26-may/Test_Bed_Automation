@@ -34,12 +34,49 @@ PARTNER_NAME = "BANDHAN BANK"
 AGENT_TYPE = "CA"
 AGENT_TENANT_ID = "BANDHANBANK"
 
-# Commission is paid per product in the combo: Ultima Plus (primary) is 0% and
-# iTerm Care (secondary) is 3%.
-COMMISSION_RATE_PRIMARY = 0
-COMMISSION_RATE_SECONDARY = 3
-# Negative commission cases pick any other rate in this range.
-COMMISSION_RATE_NEGATIVE_RANGE = (0, 10)
+# Commission is paid per product in the combo and rises with the premium paying
+# term. The rate card is banded by the number of pay years, with the 10 band
+# open ended: a 10 pay and anything longer earn the same rate.
+# (minimum pay years, Ultima Plus rate, iTerm Care rate)
+COMMISSION_RATE_BANDS = [
+    (10, 25, 35),
+    (7, 18, 22.5),
+    (5, 15, 15),
+]
+# Rates for a pay term below the lowest band, which only the premium paying term
+# epic's negative cases can produce.
+COMMISSION_RATE_PRIMARY_DEFAULT = 0
+COMMISSION_RATE_SECONDARY_DEFAULT = 0
+# Negative commission cases step through 10-40 in multiples of 5, skipping the
+# rate that is correct for that product and pay term.
+COMMISSION_RATE_NEGATIVE_RANGE = (10, 40)
+COMMISSION_RATE_NEGATIVE_STEP = 5
+
+
+def pay_years(ppt_name):
+    """The number of pay years a PPT name stands for."""
+    rule = PPT_RULES.get(ppt_name)
+    if not rule:
+        return 0
+    return rule['charge_year'](base.MIN_ENTRY_AGE)
+
+
+def commission_rates(pay_term):
+    """(Ultima Plus, iTerm Care) commission rates for a premium paying term."""
+    for min_years, primary, secondary in COMMISSION_RATE_BANDS:
+        if pay_term >= min_years:
+            return primary, secondary
+    return COMMISSION_RATE_PRIMARY_DEFAULT, COMMISSION_RATE_SECONDARY_DEFAULT
+
+
+def commission_rate_primary(ppt_name):
+    """Ultima Plus (primary) commission rate for a PPT."""
+    return commission_rates(pay_years(ppt_name))[0]
+
+
+def commission_rate_secondary(ppt_name):
+    """iTerm Care (secondary) commission rate for a PPT."""
+    return commission_rates(pay_years(ppt_name))[1]
 
 # Top up rules: the amount is between 5,000 and the installment premium, the top
 # up sum assured is 125% of it, and the total of all top ups cannot exceed the
@@ -93,11 +130,12 @@ column_order[_TENANT_INDEX:_TENANT_INDEX + 1] = [
 ]
 
 
-def agent_fields(
-    commission_primary=COMMISSION_RATE_PRIMARY,
-    commission_secondary=COMMISSION_RATE_SECONDARY,
-):
-    """The six issuance columns. Only the commission epic varies the rates."""
+def agent_fields(commission_primary, commission_secondary):
+    """The six issuance columns.
+
+    The rates are the ones the row's own PPT earns; only the commission epic's
+    negative cases pass anything else.
+    """
     return {
         'AgentCode': AGENT_CODE,
         'PartnerName': PARTNER_NAME,
@@ -139,9 +177,17 @@ def top_up_sum_assured(top_up_amount):
 
 
 def invalid_commission_rate(valid_rate, iteration_index=0):
-    """Any rate in 0-10 other than the valid one for that product."""
+    """A rate in 10-40 in multiples of 5, other than the correct one.
+
+    `valid_rate` is the rate that product earns for the row's own PPT, so a rate
+    that is correct for a different PPT is still a valid negative here.
+    """
     low, high = COMMISSION_RATE_NEGATIVE_RANGE
-    candidates = [rate for rate in range(low, high + 1) if rate != valid_rate]
+    candidates = [
+        rate
+        for rate in range(low, high + 1, COMMISSION_RATE_NEGATIVE_STEP)
+        if rate != valid_rate
+    ]
     return candidates[iteration_index % len(candidates)]
 
 
@@ -244,25 +290,28 @@ TOP_UP_SCENARIOS = [
 ]
 
 # The two Commission rate scenarios, one per product in the combo. `column` is
-# the commission column that scenario validates and varies on a negative row.
+# the commission column that scenario validates and varies on a negative row,
+# and `valid_rate` resolves the rate that product earns for the row's own PPT.
 COMMISSION_SCENARIOS = [
     {
         "key": "iterm_care",
         "product": "iTerm care",
         "column": "CommissionRateSecondary",
-        "valid_rate": COMMISSION_RATE_SECONDARY,
+        "valid_rate": commission_rate_secondary,
     },
     {
         "key": "ultima_plus",
         "product": "Ultima plus",
         "column": "CommissionRatePrimary",
-        "valid_rate": COMMISSION_RATE_PRIMARY,
+        "valid_rate": commission_rate_primary,
     },
 ]
 
 
-def commission_rate_message(product, rate):
-    return f"To check commission rate for {product} should be {rate}%"
+def commission_rate_message(product, rate, ppt_name):
+    return (
+        f"To check commission rate for {product} should be {rate}% for {ppt_name}"
+    )
 
 
 def build_policy_context(ppt_name=None):
@@ -327,8 +376,15 @@ def generate_pre_issuance_rows(
 
     # The base module fills tenantId from the discount info; at issuance every
     # row is sold through the one partner, so the agent fields overwrite it.
-    for column, value in agent_fields().items():
-        df[column] = value
+    df['AgentCode'] = AGENT_CODE
+    df['PartnerName'] = PARTNER_NAME
+    df['AgentType'] = AGENT_TYPE
+    df['tenantId'] = AGENT_TENANT_ID
+    # Commission follows the premium paying term, which chargeYear carries, so
+    # each row earns the rate its own term does.
+    rates = df['chargeYear'].map(commission_rates)
+    df['CommissionRatePrimary'] = [rate[0] for rate in rates]
+    df['CommissionRateSecondary'] = [rate[1] for rate in rates]
     return df
 
 
@@ -384,10 +440,18 @@ def generate_test_cases(
         scenario_text,
         test_type,
         ctx,
-        commission_primary=COMMISSION_RATE_PRIMARY,
-        commission_secondary=COMMISSION_RATE_SECONDARY,
+        commission_primary=None,
+        commission_secondary=None,
     ):
-        """Assemble one scenario row for the given epic and policy context."""
+        """Assemble one scenario row for the given epic and policy context.
+
+        The commission rates default to the ones the context's PPT earns; only
+        the commission epic's negative cases override them.
+        """
+        if commission_primary is None:
+            commission_primary = commission_rate_primary(ctx["ppt_name"])
+        if commission_secondary is None:
+            commission_secondary = commission_rate_secondary(ctx["ppt_name"])
         common_row = base.build_common_row(
             tuid_counter,
             MODULE_NAME,
@@ -494,9 +558,11 @@ def generate_test_cases(
             )
 
     # --- EPIC: Commission rate (2 scenarios) ---
-    # Ultima Plus (primary) is 0% and iTerm Care (secondary) is 3%. A negative
-    # row varies only the column its own scenario validates; the other keeps its
-    # valid rate.
+    # One case covers both products in the combo, so a count of 1 gives one
+    # Ultima Plus row and one iTerm Care row. Each picks its own random PPT, and
+    # both rates follow the rate card for whichever PPT that row landed on. A
+    # negative row varies only the column its own scenario validates; the other
+    # keeps the rate that PPT earns.
     if 'CommissionRate' in selected_epics:
         target_rule = 'CommissionRate'
         pos_count, neg_count = resolve_simple_counts(epic_counts, target_rule)
@@ -507,21 +573,23 @@ def generate_test_cases(
                 iteration = i // len(COMMISSION_SCENARIOS)
                 tuid_counter += 1
                 ctx = build_policy_context()
+                ppt_name = ctx["ppt_name"]
 
+                valid_rate = scenario_def["valid_rate"](ppt_name)
                 rates = {
-                    'CommissionRatePrimary': COMMISSION_RATE_PRIMARY,
-                    'CommissionRateSecondary': COMMISSION_RATE_SECONDARY,
+                    'CommissionRatePrimary': commission_rate_primary(ppt_name),
+                    'CommissionRateSecondary': commission_rate_secondary(ppt_name),
                 }
                 if test_type == 'Negative':
                     rates[scenario_def["column"]] = invalid_commission_rate(
-                        scenario_def["valid_rate"], iteration
+                        valid_rate, iteration
                     )
 
                 scenarios.append(
                     build_row(
                         target_rule,
                         commission_rate_message(
-                            scenario_def["product"], scenario_def["valid_rate"]
+                            scenario_def["product"], valid_rate, ppt_name
                         ),
                         test_type,
                         ctx,
